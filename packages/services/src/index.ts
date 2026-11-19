@@ -244,7 +244,7 @@ export { IFileWatcherService } from "./fileWatcher/fileWatcher.js";
 export { IOAuthService } from "./oauth/oauth.js";
 
 // UsageStats service — IUsageStatsService is both a type (interface) and value (descriptor)
-export { IUsageStatsService } from "./usage-stats/usageStats.js";
+export { IUsageStatsService, createRetiredCodingPlanResetMethods } from "./usage-stats/usageStats.js";
 
 // Storage（资源管理器「存储」tab）：数据类型在 @zcode/shared；这里只导出服务接口与卷分组纯函数
 // StorageRootSpec 随契约再导出：desktop 的 Worker 协议按 contract.ts 的口径只从 services 入口取类型。
@@ -253,8 +253,16 @@ export type { IStorageService, StorageRootSpec } from "./storage/contract.js";
 // CodingPlanSubscription service — ICodingPlanSubscriptionService is both a type (interface) and value (descriptor)
 export {
   ICodingPlanSubscriptionService,
+  createRetiredCodingPlanSubscriptionService,
   type OffPeakClientConfig,
 } from "./coding-plan-subscription/codingPlanSubscription.js";
+// 个人工作台拆分出的非交易窄服务（docs/superpowers/specs/2026-11-19-personal-workbench-backend-contracts.md）
+export { IRuntimeConfigService } from "./runtime-config/contract.js";
+export type { IRuntimeConfigService as RuntimeConfigServiceType } from "./runtime-config/contract.js";
+export { IAccountModelProjectsService } from "./account-model-projects/contract.js";
+export type {
+  IAccountModelProjectsService as AccountModelProjectsServiceType,
+} from "./account-model-projects/contract.js";
 export {
   IClientScenesService,
   type ClientSceneConfig,

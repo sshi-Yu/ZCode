@@ -33,6 +33,8 @@ import type {
 } from "./model-provider/providerFacadeServices.js";
 import type { IUsageStatsService } from "./usage-stats/usageStats.js";
 import type { ICodingPlanSubscriptionService } from "./coding-plan-subscription/codingPlanSubscription.js";
+import type { IRuntimeConfigService } from "./runtime-config/contract.js";
+import type { IAccountModelProjectsService } from "./account-model-projects/contract.js";
 import type { IClientConfigService } from "./client-config/clientConfig.js";
 import type { IClientScenesService } from "./client-scenes/clientScenes.js";
 import type { ISkillsService } from "./skills/skills.js";
@@ -116,7 +118,12 @@ export interface IServiceAccessor {
   /** 语音输入；只在桌面 base 连接存在 */
   readonly voiceInputService?: IVoiceInputService;
   readonly usageStatsService: IUsageStatsService;
+  /** 旧 Coding Plan 订阅面：已退役商业动作为明确拒绝，保留读取另有窄接口。 */
   readonly codingPlanSubscriptionService: ICodingPlanSubscriptionService;
+  /** 公共运行配置读取（动态工作流/请求校验/强更/预算）。 */
+  readonly runtimeConfigService: IRuntimeConfigService;
+  /** 已有账号模型与团队项目读取（含必要项目 Key 准备）。 */
+  readonly accountModelProjectsService: IAccountModelProjectsService;
   readonly clientConfigService: IClientConfigService;
   readonly clientScenesService: IClientScenesService;
   /** 闲时任务管理（独立服务面）。 */

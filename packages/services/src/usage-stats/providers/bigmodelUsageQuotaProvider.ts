@@ -1,21 +1,13 @@
 /* eslint-disable max-lines -- quota、entitlement 与 monitor 请求共用同一套 provider 鉴权逻辑，拆文件会让 Coding Plan strict key 边界更难追踪。 */
-import { z } from "zod";
 import {
   isSameOAuthAccountMaterial,
   type OAuthAccountMaterial,
 } from "#src/oauth/repo/oauthCredentialRepo.js";
 import type {
   ApiClient,
-  ApiRequestInit,
   CodingPlanRegularTpsRequest,
   CodingPlanUsageRequest,
   CodingPlanUsageSnapshot,
-  CodingPlanResetOpportunityRequest,
-  CodingPlanResetOpportunityResult,
-  CodingPlanResetScopeRequest,
-  CodingPlanResetStatusSnapshot,
-  CodingPlanResetUseRequest,
-  CodingPlanResetUseResult,
   UsageEntitlementRequest,
   UsageEntitlementSnapshot,
   UsageMcpQuotaSnapshot,
@@ -32,7 +24,6 @@ import {
   isZaiCodingPlanProviderId,
   buildBigModelApiUrl,
   buildRuntimeZaiBusinessUrl,
-  buildRuntimeZCodeApiUrl,
 } from "@zcode/shared";
 import type { ProviderFamilyDomain } from "@zcode/shared";
 import { createServiceLogger } from "#src/logger/serviceLogger.js";
@@ -74,7 +65,6 @@ import type { BigModelUsageQuotaEnvelope } from "./bigmodelUsageQuotaMapper.js";
 import { normalizeLimits, pickPrimaryLimit } from "./bigmodelUsageQuotaMapper.js";
 
 const BIGMODEL_QUOTA_PATH = "/api/monitor/usage/quota/limit";
-const CODING_PLAN_RESET_BASE_PATH = "/api/v1/coding-plan/reset";
 const REQUEST_TIMEOUT_MS = 15_000;
 const log = createServiceLogger("usage-stats");
 const EMPTY_MODEL_USAGE_PAYLOAD = {} satisfies BigModelUsageModelUsagePayload;
@@ -82,35 +72,6 @@ const EMPTY_TOOL_USAGE_PAYLOAD = {} satisfies BigModelUsageToolUsagePayload;
 const EMPTY_CREDIT_ACTIVITY_PAYLOAD = {} satisfies BigModelCreditUsageActivityPayload;
 const EMPTY_CREDIT_DETAIL_PAYLOAD = {} satisfies BigModelCreditUsageDetailPayload;
 const EMPTY_MODEL_PERFORMANCE_PAYLOAD = {} satisfies BigModelUsageModelPerformancePayload;
-
-const codingPlanResetEnvelopeSchema = z.object({
-  code: z.number(),
-  msg: z.string().optional(),
-  data: z.unknown().optional(),
-});
-const codingPlanResetOpportunitySchema = z.object({
-  expire_at: z.number().finite().positive(),
-});
-const codingPlanResetHistorySchema = z.object({
-  used_at: z.number().finite().positive(),
-});
-const codingPlanResetStatusDataSchema = z.object({
-  available_five_hour_resets: z.array(codingPlanResetOpportunitySchema),
-  available_week_resets: z.array(codingPlanResetOpportunitySchema),
-  latest_five_hour_reset_history: codingPlanResetHistorySchema.nullable(),
-  latest_week_reset_history: codingPlanResetHistorySchema.nullable(),
-  has_unread_history: z.boolean(),
-});
-const codingPlanResetUseDataSchema = z.object({
-  used: z.literal(true),
-});
-const codingPlanResetOpportunityGrantedDataSchema = z.object({
-  granted: z.literal(true),
-});
-const codingPlanResetOpportunityDeniedDataSchema = z.object({
-  granted: z.literal(false),
-  next_try_at: z.number().int().positive(),
-});
 
 export interface UsageApiAuthorizationRequest {
   readonly preferredProviderId?: string;
@@ -158,12 +119,6 @@ interface TeamPlanContext {
   // 但复制团队项目 API Key 的 host、OAuth token key、鉴权 header 都按 family 分离。
   // 这里必须带上 family，下游 resolveTeamPlanProjectApiKey 才能选对 zai/bigmodel 的业务域名和 token。
   family: ProviderFamilyDomain;
-}
-
-interface CodingPlanResetAuthorization {
-  zcodeAuthorization: string;
-  codingPlanAuthorization: string;
-  teamContext: TeamPlanContext | null;
 }
 
 // 直接复用响应类型，避免本地副本遗漏新 bucket/周期字段。
@@ -545,159 +500,6 @@ export class BigModelUsageQuotaProvider {
     };
   }
 
-  async getCodingPlanResetStatus(
-    request: CodingPlanResetScopeRequest,
-  ): Promise<CodingPlanResetStatusSnapshot> {
-    const authorization = await this.resolveCodingPlanResetAuthorization(request);
-    const payload = await readCodingPlanResetApiJson(
-      this.apiClient,
-      buildRuntimeZCodeApiUrl(this.env, `${CODING_PLAN_RESET_BASE_PATH}/status`),
-      {
-        method: "GET",
-        timeoutMs: REQUEST_TIMEOUT_MS,
-        headers: createCodingPlanResetHeaders(authorization, true),
-      },
-    );
-    const data = readCodingPlanResetEnvelopeData(payload, codingPlanResetStatusDataSchema);
-    return {
-      availableFiveHourResets: data.available_five_hour_resets.map((item) => ({
-        expireAt: item.expire_at,
-      })),
-      availableWeekResets: data.available_week_resets.map((item) => ({
-        expireAt: item.expire_at,
-      })),
-      latestFiveHourResetHistory: data.latest_five_hour_reset_history
-        ? { usedAt: data.latest_five_hour_reset_history.used_at }
-        : null,
-      latestWeekResetHistory: data.latest_week_reset_history
-        ? { usedAt: data.latest_week_reset_history.used_at }
-        : null,
-      hasUnreadHistory: data.has_unread_history,
-    };
-  }
-
-  async useCodingPlanReset(request: CodingPlanResetUseRequest): Promise<CodingPlanResetUseResult> {
-    const idempotencyKey = request.idempotencyKey.trim();
-    if (!idempotencyKey || idempotencyKey.length > 64) {
-      throw new Error("coding_plan_reset_invalid_idempotency_key");
-    }
-    const authorization = await this.resolveCodingPlanResetAuthorization(request);
-    const payload = await readCodingPlanResetApiJson(
-      this.apiClient,
-      buildRuntimeZCodeApiUrl(this.env, `${CODING_PLAN_RESET_BASE_PATH}/use`),
-      {
-        method: "POST",
-        timeoutMs: REQUEST_TIMEOUT_MS,
-        headers: {
-          ...createCodingPlanResetHeaders(authorization, true),
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          idempotency_key: idempotencyKey,
-          reset_type: request.resetType,
-        }),
-      },
-    );
-    const data = readCodingPlanResetEnvelopeData(payload, codingPlanResetUseDataSchema);
-    return { used: data.used };
-  }
-
-  async requestCodingPlanResetOpportunity(
-    request: CodingPlanResetOpportunityRequest,
-  ): Promise<CodingPlanResetOpportunityResult> {
-    const idempotencyKey = request.idempotencyKey.trim();
-    if (!idempotencyKey || idempotencyKey.length > 64) {
-      throw new Error("coding_plan_reset_invalid_idempotency_key");
-    }
-    const authorization = await this.resolveCodingPlanResetAuthorization(request);
-    let payload: unknown;
-    try {
-      payload = await readCodingPlanResetApiJson(
-        this.apiClient,
-        buildRuntimeZCodeApiUrl(this.env, `${CODING_PLAN_RESET_BASE_PATH}/opportunity`),
-        {
-          method: "POST",
-          timeoutMs: REQUEST_TIMEOUT_MS,
-          headers: {
-            ...createCodingPlanResetHeaders(authorization, true),
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({ idempotency_key: idempotencyKey }),
-        },
-        { acceptedBusinessCodes: [3301] },
-      );
-    } catch (error) {
-      // 后端在请求过快/发卡锁竞争时直接回 HTTP 429，不带 3301 信封和 next_try_at。
-      // 映射成稳定错误码，客户端据此写兜底冷却，避免 30 秒轮询持续撞限流。
-      if (error instanceof ApiError && error.status === 429) {
-        throw new Error("coding_plan_reset_opportunity_throttled", {
-          cause: error,
-        });
-      }
-      throw error;
-    }
-    const envelope = codingPlanResetEnvelopeSchema.safeParse(payload);
-    if (!envelope.success) {
-      throw new Error("coding_plan_reset_invalid_response");
-    }
-    // 3301 的 next_try_at 是服务端限流边界，必须完整透传给客户端；
-    // 丢弃该字段会让 30 秒轮询持续触发资格判断，绕过后端要求的重试间隔。
-    if (envelope.data.code === 3301) {
-      const denied = codingPlanResetOpportunityDeniedDataSchema.safeParse(envelope.data.data);
-      if (!denied.success) {
-        throw new Error("coding_plan_reset_invalid_response");
-      }
-      return { granted: false, nextTryAt: denied.data.next_try_at };
-    }
-    const data = readCodingPlanResetEnvelopeData(
-      payload,
-      codingPlanResetOpportunityGrantedDataSchema,
-    );
-    return { granted: data.granted, nextTryAt: null };
-  }
-
-  async markCodingPlanResetHistoryRead(request: CodingPlanResetScopeRequest): Promise<void> {
-    const authorization = await this.resolveCodingPlanResetAuthorization(request);
-    const payload = await readCodingPlanResetApiJson(
-      this.apiClient,
-      buildRuntimeZCodeApiUrl(this.env, `${CODING_PLAN_RESET_BASE_PATH}/history/read`),
-      {
-        method: "POST",
-        timeoutMs: REQUEST_TIMEOUT_MS,
-        // history/read 使用当前 Coding Plan credential 校验身份，但按用户共享已读游标，不带 target scope。
-        headers: createCodingPlanResetHeaders(authorization, false),
-      },
-    );
-    readCodingPlanResetEnvelope(payload);
-  }
-
-  private async resolveCodingPlanResetAuthorization(
-    request: CodingPlanResetScopeRequest,
-  ): Promise<CodingPlanResetAuthorization> {
-    const accountAccess = await this.resolveRequestAccountAccess(request.accountAccess);
-    if (!accountAccess) {
-      throw new Error("coding_plan_reset_account_access_required");
-    }
-    const account = await this.loadOAuthAccountMaterial(accountAccess.family);
-    if (!account?.zcodeJwtToken) throw new Error("coding_plan_reset_zcode_jwt_required");
-    if (!account.accessToken.trim()) throw new Error("coding_plan_reset_maas_jwt_required");
-    await this.assertUnchangedRequestAccess(request.accountAccess, accountAccess);
-    // 关联套餐未必与主登录渠道同名。两种 JWT 必须来自同一会话快照，防止换号时拼接。
-    if (
-      !isSameOAuthAccountMaterial(
-        account,
-        await this.loadOAuthAccountMaterial(accountAccess.family),
-      )
-    )
-      throw new Error("coding_plan_reset_account_changed");
-    const zcodeJwt = account.zcodeJwtToken;
-    return {
-      zcodeAuthorization: /^Bearer\s/i.test(zcodeJwt) ? zcodeJwt : `Bearer ${zcodeJwt}`,
-      codingPlanAuthorization: account.accessToken.trim(),
-      teamContext: resolveTeamPlanContext(accountAccess),
-    };
-  }
-
   async getCodingPlanUsageSnapshot(
     request: CodingPlanUsageRequest,
   ): Promise<CodingPlanUsageSnapshot> {
@@ -996,25 +798,6 @@ export class BigModelUsageQuotaProvider {
   }
 }
 
-function createCodingPlanResetHeaders(
-  authorization: CodingPlanResetAuthorization,
-  includeTargetScope: boolean,
-): Record<string, string> {
-  const headers: Record<string, string> = {
-    Authorization: authorization.zcodeAuthorization,
-    "X-Bigmodel-Authorization": authorization.codingPlanAuthorization,
-  };
-  if (!includeTargetScope) {
-    return headers;
-  }
-  headers["Bigmodel-Target-Type"] = authorization.teamContext ? "TEAM" : "PERSONAL";
-  if (authorization.teamContext) {
-    headers["Bigmodel-Organization"] = authorization.teamContext.organizationId;
-    headers["Bigmodel-Project"] = authorization.teamContext.projectId;
-  }
-  return headers;
-}
-
 function readApiErrorMessage(payload: unknown, fallback: string): string {
   if (!payload || typeof payload !== "object") {
     return fallback;
@@ -1038,84 +821,6 @@ function readApiDiagnosticHeaders(headers: Headers): Record<string, string> | un
     }
   }
   return Object.keys(result).length > 0 ? result : undefined;
-}
-
-// 联调对账后缀：envelope 业务错误（如 2007 依赖失败）需要把后端 x-request-id
-// 带进错误 message，RPC 日志和 UI warn 才能与后端日志按请求 id 精确对上。
-// 仅用于日志定位，客户端不做分支；缺失时返回空串保持原 message 契约。
-function readCodingPlanResetErrorDiagnostics(headers: Headers): string {
-  const requestId = headers.get("x-request-id")?.trim();
-  return requestId ? ` (x-request-id:${requestId})` : "";
-}
-
-async function readCodingPlanResetApiJson(
-  apiClient: ApiClient,
-  input: string,
-  init: ApiRequestInit,
-  options: { acceptedBusinessCodes?: readonly number[] } = {},
-): Promise<unknown> {
-  const response = await apiClient.request(input, init);
-  let payload: unknown;
-  let parseError: unknown;
-  try {
-    payload = JSON.parse(await response.text()) as unknown;
-  } catch (error) {
-    parseError = error;
-  }
-
-  // reset 后端在 HTTP 4xx 时仍通过统一 envelope 返回稳定业务 code。
-  // 必须先读取 code，不能把易变的 msg 当成客户端分支依据。
-  const envelope = codingPlanResetEnvelopeSchema.safeParse(payload);
-  if (envelope.success && envelope.data.code !== 0) {
-    if (options.acceptedBusinessCodes?.includes(envelope.data.code)) {
-      return payload;
-    }
-    throw new Error(
-      `coding_plan_reset_api_error:${envelope.data.code}${readCodingPlanResetErrorDiagnostics(response.headers)}`,
-    );
-  }
-
-  if (!response.ok) {
-    throw new ApiError({
-      message: readApiErrorMessage(payload, `HTTP ${response.status}`),
-      url: input,
-      method: init.method,
-      status: response.status,
-      responseHeaders: readApiDiagnosticHeaders(response.headers),
-      cause: parseError,
-    });
-  }
-  if (parseError !== undefined) {
-    throw new Error("coding_plan_reset_invalid_response", {
-      cause: parseError,
-    });
-  }
-  return payload;
-}
-
-function readCodingPlanResetEnvelope(
-  payload: unknown,
-): z.infer<typeof codingPlanResetEnvelopeSchema> {
-  const result = codingPlanResetEnvelopeSchema.safeParse(payload);
-  if (!result.success) {
-    throw new Error("coding_plan_reset_invalid_response");
-  }
-  if (result.data.code !== 0) {
-    throw new Error(`coding_plan_reset_api_error:${result.data.code}`);
-  }
-  return result.data;
-}
-
-function readCodingPlanResetEnvelopeData<TSchema extends z.ZodType>(
-  payload: unknown,
-  schema: TSchema,
-): z.infer<TSchema> {
-  const envelope = readCodingPlanResetEnvelope(payload);
-  const result = schema.safeParse(envelope.data);
-  if (!result.success) {
-    throw new Error("coding_plan_reset_invalid_response");
-  }
-  return result.data;
 }
 
 function resolveTeamPlanContext(accountAccess: ZCodeAccountAccess): TeamPlanContext | null {

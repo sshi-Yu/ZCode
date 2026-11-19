@@ -34,7 +34,6 @@ import {
 } from "react";
 import { Hand } from "lucide-react";
 import {
-  BUILTIN_MODEL_PROVIDER_IDS,
   buildCustomSupplierKey,
   isRemoteWorkspaceIdentity,
   ZCODE_AGENT_PROVIDER,
@@ -83,7 +82,6 @@ import type {
   ConversationShareTurnPreflightResult,
   ImportedConversationShare,
 } from "@zcode/services";
-import { useCodingPlanBillingDiscountFromService } from "@/CodingPlanBillingDiscount.js";
 import { toast } from "@/components/ui/toast.js";
 import { cn } from "@/components/lib/utils.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -95,7 +93,6 @@ import { buildChatSessionScrollMemoryKey } from "@/lib/chatSessionScrollMemory.j
 import type { MessageFileLinkTarget } from "@/components/ai-elements/message.js";
 import { useServices } from "@/hooks/useServices.js";
 import { useOptionalPlatform } from "@/hooks/usePlatform.js";
-import { browserGlobalNoticeStore } from "@/global-notice/globalNoticeStore.js";
 import {
   HIGHSPEED_SEND_WAIT_BUDGET_MS,
   prepareHighspeedSendContext,
@@ -108,14 +105,12 @@ import {
   calculateHighspeedSavedDurationFromMetrics,
   readHighspeedRegularTpsFromHealth,
 } from "@/highspeed/highspeedSavedTime.js";
-import { buildHighspeedShareNotice } from "@/highspeed/highspeedShare.js";
 import {
   findTurnHeaderBySourceCommandId,
   findUserInputBySourceCommandId,
   listHighspeedInputRows,
 } from "@/highspeed/highspeedConversationRows.js";
 import {
-  claimHighspeedCardAutoShare,
   claimHighspeedHealthyAttempt,
   releaseHighspeedHealthyAttempt,
   resetHighspeedHealthyAttempts,
@@ -125,10 +120,8 @@ import {
   getHighspeedSessionDependencies,
   hydrateHighspeedTurnsFromTranscript,
   listExpiredHighspeedCardsAwaitingTps,
-  listHighspeedCardAutoShareCandidates,
   listHighspeedTurnsAwaitingMetricsPersistence,
   listPendingHighspeedTurns,
-  markHighspeedCardAutoShared,
   markHighspeedTurnMetricsPersisted,
   recordHighspeedTurn,
   resolveNextHighspeedAutoShareAt,
@@ -140,10 +133,6 @@ import {
   claimHighspeedFallbackToast,
   releaseHighspeedCardInvalidation,
 } from "@/highspeed/highspeedToastClaims.js";
-import {
-  collectHighspeedCardShareBlockers,
-  listHighspeedCardsAwaitingAutoShare,
-} from "@/highspeed/highspeedShareDiagnostics.js";
 import type { SessionOpenTrigger } from "@/lib/sessionOpenArmsTelemetry.js";
 import { useDynamicWorkflowAvailability } from "@/hooks/useDynamicWorkflowAvailability.js";
 import { resolveWorkflowResumeHandler } from "@/v4/workflowResumeGate.js";
@@ -157,10 +146,6 @@ import { useBaseWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
 import { selectGenUiModelContext } from "@zcode/shared/gen-ui";
 import { useWorkspaceHomePath } from "@/hooks/useWorkspaceHomePath.js";
 import { prepareWorkspaceWithZCodeSessionService } from "@/hooks/useWorkspacePrepare.js";
-import {
-  createCodingPlanFunnelContext,
-  resolveCodingPlanEntryPlanState,
-} from "@/lib/codingPlanFunnelTelemetry.js";
 import { decodeCustomModelValue, encodeCustomModelValue } from "@/lib/zcodeCustomModelValue.js";
 import { parseModelPickerValue } from "@/lib/zcodeSessionProjection.js";
 import { prepareComposerRecentReceipt } from "@/lib/composerRecent.js";
@@ -351,7 +336,6 @@ import {
   type ChatErrorBannerModelConfigTarget,
 } from "@/ChatErrorBanner.js";
 import { isProviderNotReadyError } from "@/lib/chatPrepareError.js";
-import { useOptionalCodingPlanUpgradeDialog } from "@/settings/CodingPlanUpgradeDialogProvider.js";
 import { setPendingSettingsSectionIntent } from "@/lib/settingsNavigation.js";
 import { useOptionalTabStore } from "@/store/TabStoreProvider.js";
 import { useIsMobileTextInputViewport } from "@/lib/mobileTextInput.js";
@@ -1328,7 +1312,7 @@ export function SessionPane({
     () => selectHighspeed(sessionId),
     () => selectHighspeed(sessionId),
   );
-  const [highspeedAutoShareClock, refreshHighspeedAutoShareClock] = useState(0);
+  const [highspeedMetricsClock, refreshHighspeedMetricsClock] = useState(0);
   const dispatchCommandRef = useRef<
     | ((
         type: CommandType,
@@ -1467,7 +1451,7 @@ export function SessionPane({
     // Bug 根因：旧逻辑以 Turn 完成为分享时钟，第一轮结束就发布卡片；这里改由整张卡
     // 的 expiresAt 唤醒聚合流程，卡到期时若仍有 Turn 运行，则等待其完成事件再次触发。
     const timer = window.setTimeout(
-      () => refreshHighspeedAutoShareClock((revision) => revision + 1),
+      () => refreshHighspeedMetricsClock((revision) => revision + 1),
       delayMs,
     );
     return () => window.clearTimeout(timer);
@@ -1481,7 +1465,7 @@ export function SessionPane({
     // 时钟；聚合链路各入口均有 claim/幂等保护，重复触发无副作用。
     const refreshFromWindowWake = () => {
       if (document.visibilityState === "hidden") return;
-      refreshHighspeedAutoShareClock((revision) => revision + 1);
+      refreshHighspeedMetricsClock((revision) => revision + 1);
     };
     document.addEventListener("visibilitychange", refreshFromWindowWake);
     window.addEventListener("focus", refreshFromWindowWake);
@@ -1489,7 +1473,7 @@ export function SessionPane({
       document.removeEventListener("visibilitychange", refreshFromWindowWake);
       window.removeEventListener("focus", refreshFromWindowWake);
     };
-  }, [refreshHighspeedAutoShareClock, sessionId]);
+  }, [refreshHighspeedMetricsClock, sessionId]);
   useEffect(() => {
     if (!sessionId || snapshot?.sessionId !== sessionId) return;
     const terminalStates = new Set(["completedSuccess", "completedInterrupted", "failed"]);
@@ -1657,37 +1641,13 @@ export function SessionPane({
             // Bug 根因：持久化 ACK 触发的 store 更新可能先于 in-flight 清理被 React 消费，
             // 导致本轮重算被跳过；ACK 成功后显式唤醒一次，避免必须发送下一条 prompt。
             if (metricsPersisted) {
-              refreshHighspeedAutoShareClock((revision) => revision + 1);
+              refreshHighspeedMetricsClock((revision) => revision + 1);
             }
           });
       }
     }
-
-    for (const candidate of listHighspeedCardAutoShareCandidates(sessionId)) {
-      if (candidate.expiresAt > autoShareNow) continue;
-      // Bug 根因：失败后只清理 in-flight 会让后续 snapshot 重复触发自动分享，最终打到 429。
-      if (!claimHighspeedCardAutoShare(candidate.cardId, autoShareNow)) continue;
-      // 分享卡片改为客户端生成，不再请求后端 share 接口；到期后直接把本地统计发布到左下角。
-      browserGlobalNoticeStore?.publish(
-        buildHighspeedShareNotice({ cardId: candidate.cardId, metrics: candidate.metrics }),
-      );
-      markHighspeedCardAutoShared(candidate.cardId);
-    }
-
-    // 诊断（debug，随 snapshot 高频触发）：卡已到期、从未尝试分享、但也没进候选时，
-    // 直接输出阻塞原因。2026-08-31 左下角分享卡停留在旧卡 36 分钟无任何日志可查，
-    // 根因就是这些门禁此前全部静默跳过。
-    for (const cardId of listHighspeedCardsAwaitingAutoShare(sessionId, autoShareNow)) {
-      const blockers = collectHighspeedCardShareBlockers(cardId);
-      if (blockers.length > 0) {
-        logger.debug("[highspeed] 卡已到期但未进入自动分享，阻塞原因", {
-          cardId,
-          blockers,
-        });
-      }
-    }
   }, [
-    highspeedAutoShareClock,
+    highspeedMetricsClock,
     highspeedCardService,
     highspeedOwner,
     highspeedState,
@@ -2052,11 +2012,7 @@ export function SessionPane({
       }),
     [composerDraft.modelSelection, modelSelectionRead.state, sessionId],
   );
-  const codingPlanUpgradeDialog = useOptionalCodingPlanUpgradeDialog();
   const openSettingsTab = useOptionalTabStore((state) => state.openSettingsTab);
-  const billingDiscount = useCodingPlanBillingDiscountFromService(
-    baseWorkspaceServices.codingPlanSubscriptionService,
-  );
   const projectDirectory = useOptionalProjectDirectoryActions();
   const commitCreatedTask = projectDirectory?.commitCreatedTask;
   const refreshTaskGroups = projectDirectory?.refreshTaskGroups;
@@ -3903,7 +3859,7 @@ export function SessionPane({
           }
           return result;
         } catch (error) {
-          logger.warn("[highspeed] 抽卡失败，本轮按普通模型发送", {
+          logger.warn("[highspeed] 准备已有高速卡失败，本轮按普通模型发送", {
             error: error instanceof Error ? error.message : String(error),
             taskId,
           });
@@ -5862,7 +5818,7 @@ export function SessionPane({
   }, [sessionId]);
   const handleDismissComposerError = useCallback(() => composerBanner?.dismiss(), [composerBanner]);
   // 远端 workspace 的模型目录来自远端 Registry；本机配置保存后由 Provisioning 自动下发，
-  // 因此缺模型横幅只切换措辞，配置/升级动作仍统一指向本机。
+  // 因此缺模型横幅只切换措辞，配置动作统一指向本机。
   const modelConfigTarget: ChatErrorBannerModelConfigTarget = isRemoteWorkspaceIdentity(
     workspaceIdentity ?? "",
   )
@@ -5872,42 +5828,6 @@ export function SessionPane({
     setPendingSettingsSectionIntent("modelProvider");
     openSettingsTab();
   }, [openSettingsTab]);
-  const handleOpenModelUpgrade = useCallback(() => {
-    if (!codingPlanUpgradeDialog) return;
-    const providerId =
-      sharedSettings?.providerFamilyDomain === "bigmodel"
-        ? BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan
-        : BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan;
-    codingPlanUpgradeDialog.openCodingPlanUpgrade({ providerId });
-  }, [codingPlanUpgradeDialog, sharedSettings?.providerFamilyDomain]);
-  const handleOpenQuotaUpgrade = useCallback(() => {
-    const providerId = quotaBanner.upgradeProviderId;
-    if (!providerId || !codingPlanUpgradeDialog) return;
-    const eventText = intl.formatMessage({
-      id: quotaBanner.upgradeActionLabelId,
-    });
-    // 横幅只建立漏斗上下文；coding_plan_upgrade_ck 仍由真实购买面板打开后统一上报。
-    codingPlanUpgradeDialog.openCodingPlanUpgrade({
-      providerId,
-      funnelContext: createCodingPlanFunnelContext({
-        providerId,
-        upgradeSource: "session_quota_alert",
-        eventRegion: "app.session",
-        eventText,
-        entryPlanState: resolveCodingPlanEntryPlanState({
-          providerId,
-          displayStatus: "purchased",
-          planLevel: "start",
-        }),
-      }),
-    });
-  }, [
-    codingPlanUpgradeDialog,
-    intl,
-    quotaBanner.upgradeActionLabelId,
-    quotaBanner.upgradeProviderId,
-  ]);
-
   const handleConfirmShareDisclosure = useCallback(async () => {
     if (!sessionId || !shareDraft || sharePublishing) return;
     const productTurnIds = getConversationShareSelectedProductTurnIds(
@@ -6389,7 +6309,6 @@ export function SessionPane({
       onRetryInitialization={handleRetrySubscribe}
       onRetryError={retryConfigReadEnabled ? handleRetryConfigRead : undefined}
       onOpenModelSettings={handleOpenModelSettings}
-      onOpenModelUpgrade={handleOpenModelUpgrade}
       modelConfigTarget={modelConfigTarget}
       onOpenCodeViewer={onOpenCodeViewer}
       suppressGoalCommands={selectionSideChat}
@@ -6489,14 +6408,7 @@ export function SessionPane({
         <ConversationQuotaBanner
           state={quotaBanner.state}
           onShown={quotaBanner.markShown}
-          billingDiscountActive={billingDiscount.active}
-          billingDiscountConfig={billingDiscount.config}
-          upgradeActionLabelId={quotaBanner.upgradeActionLabelId}
-          onUpgrade={
-            quotaBanner.upgradeProviderId && codingPlanUpgradeDialog
-              ? handleOpenQuotaUpgrade
-              : undefined
-          }
+          onOpenModelSettings={handleOpenModelSettings}
           onDismiss={quotaBanner.dismiss}
         />
       ) : null}

@@ -145,11 +145,14 @@ async function models(present: boolean) {
   );
   await textVisible("Model list", present);
 }
-async function banners(present: boolean) {
-  // 描述只属于购买横幅，避免和连接方式菜单里的同名选项混淆。
-  await textVisible("dedicated Coding Plan quota", present);
-  await textVisible("centralized billing", present);
+async function noCommercialEntries() {
+  // 描述只属于购买横幅，不能把账号连接方式或只读续费时间误判为购买动作。
+  await textVisible("dedicated Coding Plan quota", false);
+  await textVisible("centralized billing", false);
   await textVisible("E2E_TRIAL_PROMO", false);
+  await textVisible("Upgrade", false);
+  await textVisible("150%", false);
+  expect(await $('[data-testid="coding-plan-upgrade-surface"]').isDisplayed()).toBe(false);
 }
 async function requests() {
   return (await (await fetch(`${base()}/__e2e/coding-plan/requests`)).json()).requests as Array<{
@@ -158,7 +161,7 @@ async function requests() {
   }>;
 }
 
-describe("套餐权益展示与购买入口", () => {
+describe("套餐权益只读展示与商业入口退役", () => {
   afterEach(async function () {
     if (this.currentTest?.state === "failed") {
       console.log("[entitlement-presentation] visible page:", await $("body").getText());
@@ -174,20 +177,20 @@ describe("套餐权益展示与购买入口", () => {
   after(async () => {
     await clearAppData();
   });
-  it("CTP-14: 未连接只显示个人和团队购买入口", async function () {
+  it("CTP-14: 未连接显示真实状态而不显示购买入口", async function () {
     this.timeout(120000);
     await prepare(empty, "personal", false);
     await textVisible("Not connected");
     await textVisible("Connect to BigModel");
     await models(false);
-    await banners(true);
+    await noCommercialEntries();
   });
-  it("CTP-15: 历史团队订阅不隐藏无权益账号的团队 banner", async function () {
+  it("CTP-15: 历史团队订阅不伪造无权益账号状态且无购买入口", async function () {
     this.timeout(120000);
     await prepare({ ...empty, team: "expired" }, "personal");
     await textVisible("Not subscribed, enabled after subscription");
     await models(false);
-    await banners(true);
+    await noCommercialEntries();
     const subscriptions = (await requests()).filter((r) => r.path === "/api/biz/subscription/list");
     expect(subscriptions.length).toBeGreaterThan(0);
     // 账号 Provider 已使用短期项目 Token；旧长期 Key 不会再进入订阅请求。
@@ -201,6 +204,26 @@ describe("套餐权益展示与购买入口", () => {
         return claims.token_use === "project_access" && claims.api_key === "e2e-key";
       }),
     ).toBe(true);
+  });
+  it("PCS03: 团队项目首次读取失败可重试，不当成空列表", async function () {
+    this.timeout(120000);
+    await prepare(
+      { ...empty, personal: "active", team: "active", teamProjectsUnavailable: true },
+      "personal",
+    );
+    const error = $('[data-testid="team-projects-load-error"]');
+    await error.waitForDisplayed();
+    const pricingCount = async () =>
+      (await requests()).filter(
+        (request) => request.path === "/api/biz/subscription/enterprise/v2/pricing",
+      ).length;
+    expect(await pricingCount()).toBeGreaterThan(0);
+    // 切换模拟场景会重置请求账本，分别断言失败与重试阶段的真实请求。
+    await scenario({ ...empty, personal: "active", team: "active" });
+    await error.$("button").click();
+    await browser.waitUntil(async () => (await pricingCount()) > 0);
+    await error.waitForDisplayed({ reverse: true });
+    await models(true);
   });
   for (const team of ["expired", "unassigned", "failure"] as const) {
     it(`CTP-16: 团队 ${team} 不误判为未登录`, async function () {
@@ -244,7 +267,7 @@ describe("套餐权益展示与购买入口", () => {
     await textVisible("Today's balance", false);
     await textVisible("E2E_EXPIRED_BALANCE", false);
     await models(false);
-    await banners(true);
+    await noCommercialEntries();
   });
   it("CTP-18: 同时存在过期和有效 Start，仅显示有效计划", async function () {
     this.timeout(120000);
@@ -254,8 +277,7 @@ describe("套餐权益展示与购买入口", () => {
     await textVisible("E2E_EXPIRED_PLAN", false);
     await textVisible("E2E_EXPIRED_BALANCE", false);
     await models(true);
-    await textVisible("Upgrade");
-    await textVisible("150%");
+    await noCommercialEntries();
   });
   it("CTP-20: Start 待生效只展示套餐卡，不展示模型列表", async function () {
     this.timeout(120000);
@@ -282,9 +304,7 @@ describe("套餐权益展示与购买入口", () => {
       );
       await textVisible("ZCode V3 Start Plan");
       await models(true);
-      await banners(false);
-      await textVisible("Upgrade", false);
-      await textVisible("150%", false);
+      await noCommercialEntries();
       await prepare({ ...empty, start: "expired", [paid]: "active" }, paid);
       await models(true);
       await clickTestIdByDom(
@@ -295,7 +315,7 @@ describe("套餐权益展示与购买入口", () => {
       );
       await textVisible("Start Plan expired");
       await models(false);
-      await banners(false);
+      await noCommercialEntries();
     });
   }
 });

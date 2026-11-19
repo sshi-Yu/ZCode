@@ -833,6 +833,7 @@ const enUS: Record<string, string> = {
   "settings.computerUse.disabledToast":
     "Computer Use is disabled. Existing conversations require a ZCode restart to take effect.",
   "settings.modelProvider.connectionUnavailableNotice": "The current plan is unavailable.",
+  "settings.modelProvider.teamProjectsLoadError": "Could not load team projects.",
   "settings.modelProvider.switchConnection": "Switch to “{connection}”",
   "settings.modelProvider.connectionSuggestionStale":
     "Plan availability has changed. Please select a connection in model settings.",
@@ -7738,7 +7739,8 @@ const enUS: Record<string, string> = {
   "chat.error.collapseDetails": "Hide details",
   "chat.error.feedback": "Report issue",
   "chat.error.feedbackOpened": "Feedback opened with the error context attached",
-  "chat.error.noAvailableModel": "No model available. Upgrade or set a custom model.",
+  "chat.error.noAvailableModel":
+    "No model is available. Choose an existing model or configure a personal provider in Model settings.",
   "chat.error.remoteNoAvailableModel":
     "This remote device has no available model yet. Configure models on this computer first; they will sync to the remote device automatically after you save.",
   "chat.error.sendFailed": "Failed to send. Try again later.",
@@ -7753,21 +7755,21 @@ const enUS: Record<string, string> = {
   "chat.quota.startPlan.modelVeryLow":
     "{model} has {percent} of its plan quota remaining ({remaining} tokens).",
   "chat.quota.startPlan.modelExhausted":
-    "All available quota for {model} has been used up. Switch to another model or to a Coding Plan subscription.",
+    "All available quota for {model} has been used up. Choose another available model or configure a personal provider.",
   "chat.quota.startPlan.dailyExhausted":
-    "Your Start Plan quota has been used up. Switch to a Coding Plan subscription, or wait for the quota to reset.",
+    "Your Start Plan quota has been used up. Choose another available model, configure a personal provider, or wait for the quota to reset.",
   "chat.quota.startPlan.concurrentLimit":
-    "The system is busy. Please switch models, switch to a Coding Plan subscription, or try again later.",
+    "The system is busy. Choose another available model or try again later.",
   "chat.quota.startPlan.concurrentLimit.retryExhausted":
-    "The system is busy, and automatic retries have reached the maximum count. Please try again later or switch to a Coding Plan subscription.",
+    "The system is busy, and automatic retries have reached the maximum count. Try again later or choose another available model.",
   "chat.quota.startPlan.concurrentLimit.switchModel":
     "The current model request concurrency limit has been reached. Switch models to continue your current task.",
   "chat.quota.mcp.quotaExhausted":
     'ZCode MCP "{server}" has used up today\'s quota. It resets tomorrow.',
   "chat.quota.mcp.codingPlanRequired":
-    'No ZCode MCP "{server}" quota. Sign in or get a Coding Plan to use it.',
+    'No ZCode MCP "{server}" quota is available for this account. Check your account connection and existing plan access.',
   "chat.quota.providerLimited":
-    "The current account quota or plan limit has been reached. Upgrade or adjust the plan to continue.",
+    "The current account quota or plan limit has been reached. Choose another available model or configure a personal provider.",
   "chat.quota.action.upgrade": "Upgrade",
   "chat.quota.action.renew": "Renew",
   "chat.quota.action.switchModel": "Switch model",
@@ -8441,6 +8443,18 @@ const enUS: Record<string, string> = {
   "offPeak.newTask.template.customize.description":
     "Skip the template and tell it directly what you want to do.",
   "offPeak.tabs.scheduled": "Scheduled tasks",
+  "offPeak.retired.notice":
+    "Idle-time tasks have been retired. New, edited and requeued tasks are no longer accepted. Pending records will not be dispatched or converted to normal paid tasks. Recorded statuses are the last local observation, not confirmation of cloud cancellation. Only an existing execution confirmed by its original owner can finish or be cancelled.",
+  "offPeak.retired.cancelDescription":
+    'Cancel the existing execution of "{title}" only if its original owner still confirms it is running?',
+  "offPeak.retired.pending": "Retired — no longer dispatched",
+  "offPeak.history.recordedStatus.queued": "Last recorded status: Waiting for idle compute",
+  "offPeak.history.recordedStatus.paused": "Last recorded status: Paused",
+  "offPeak.history.recordedStatus.running":
+    "Last recorded status: Running; current execution is not confirmed",
+  "offPeak.history.recordedStatus.completed": "Last recorded status: Succeeded",
+  "offPeak.history.recordedStatus.failed": "Last recorded status: Failed",
+  "offPeak.history.recordedStatus.cancelled": "Last recorded status: Cancelled",
   "offPeak.tabs.idle": "Idle-time task",
   "automations.statusFilter.all": "All",
   "automations.statusFilter.inProgress": "In progress",

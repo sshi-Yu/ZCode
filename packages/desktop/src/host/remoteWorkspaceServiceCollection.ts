@@ -24,6 +24,8 @@ import {
   ISourceServerWorkspaceService,
   IUsageStatsService,
   ICodingPlanSubscriptionService,
+  IRuntimeConfigService,
+  IAccountModelProjectsService,
   IClientConfigService,
   IClientScenesService,
   ISkillsService,
@@ -89,6 +91,8 @@ export const REMOTE_WORKSPACE_RPC_REGISTRATIONS = [
   ["sourceServerWorkspaceService", ISourceServerWorkspaceService],
   ["usageStatsService", IUsageStatsService],
   ["codingPlanSubscriptionService", ICodingPlanSubscriptionService],
+  ["runtimeConfigService", IRuntimeConfigService],
+  ["accountModelProjectsService", IAccountModelProjectsService],
   ["clientScenesService", IClientScenesService],
   ["skillsService", ISkillsService],
   ["skillSyncService", ISkillSyncService],
@@ -226,6 +230,11 @@ export function createServerRemoteWorkspaceServiceCollection(params: {
     .register(
       ICodingPlanSubscriptionService,
       params.connectionServices.codingPlanSubscriptionService,
+    )
+    .register(IRuntimeConfigService, params.connectionServices.runtimeConfigService)
+    .register(
+      IAccountModelProjectsService,
+      params.connectionServices.accountModelProjectsService,
     )
     .register(IClientConfigService, params.clientConfigService)
     .register(IClientScenesService, params.connectionServices.clientScenesService)

@@ -16,7 +16,7 @@ export interface UsageEntitlementRequestOptions {
   allowEnvApiKey?: boolean;
 }
 
-export type UsageEntitlementRefreshReason = "initial" | "access" | "manual" | "purchase" | "auth";
+export type UsageEntitlementRefreshReason = "initial" | "access" | "manual" | "auth";
 export type UsageEntitlementScheduleState = "unknown" | "active" | "none" | "unavailable";
 
 export const USAGE_ENTITLEMENT_ACCESS_REFRESH_MS = 60_000;

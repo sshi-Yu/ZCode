@@ -1,7 +1,9 @@
 import type { OAuthAccountMaterial } from "#src/oauth/repo/oauthCredentialRepo.js";
 import { applyDynamicWorkflowUserMode, type ApiClient } from "@zcode/shared";
 import type { ICredentialService } from "../credential/credential.js";
-import type { ICodingPlanSubscriptionService } from "./codingPlanSubscription.js";
+import { createRetiredCodingPlanSubscriptionService, type ICodingPlanSubscriptionService } from "./codingPlanSubscription.js";
+import type { IRuntimeConfigService } from "../runtime-config/contract.js";
+import type { IAccountModelProjectsService } from "../account-model-projects/contract.js";
 import { BigModelCodingPlanSubscriptionProvider } from "./bigmodelCodingPlanSubscriptionProvider.js";
 import type { ModelSelectionView } from "@zcode/provider";
 import { ZaiCodingPlanSubscriptionProvider } from "./zaiCodingPlanSubscriptionProvider.js";
@@ -19,22 +21,25 @@ interface CodingPlanSubscriptionServiceDependencies {
 }
 
 /**
- * 原 service 把所有调用直接绑定到单一 BigModelCodingPlanSubscriptionProvider，
- * zai family 没有独立的 Team Plan 定价来源（死代码）。
+ * 个人工作台商业服务拆除（docs/superpowers/specs/2026-11-19-personal-workbench-backend-contracts.md）：
+ * 原 service 混合了交易动作与公共运行配置/账号项目读取。本工厂仍是这组能力的唯一装配点，
+ * 一次创建 bigmodel/zai 两个 provider 实例，随后暴露三个服务面：
  *
- * zai 与 bigmodel Team Plan 全链路对称化：
- * 同时持有 bigmodel 和 zai 两个 provider 实例；enterprise 读路径（getEnterprisePricing）按
- * request.family 路由到对应实例；缺省 family 时保持 bigmodel，向后兼容既有调用点。
+ * - runtimeConfigService / accountModelProjectsService：保留能力的窄接口，直接委托原 provider，
+ *   缓存、失败语义、family 路由与项目 Key 准备完全复用原实现，不另建缓存或请求。
+ * - codingPlanSubscriptionService（legacy）：旧 RPC 兼容面。已退役的商业动作统一
+ *   reject `commercial_service_unsupported`，不读取凭据、不发云请求、不返回空成功；
+ *   保留读取（runtime config / OffPeak 配置 / 已有账号项目 pricing）委托窄服务同一实现。
  *
- * 其余方法（购买/staticConfigs/preview 等）语义与 family 无关或已在 provider 内部按
- * request.providerId 动态路由，统一委托给 bigmodel provider 即可：
- *   - 企业购买闭环（balance/order/pending/cancel/continue/status）按产品决策仍只走 bigmodel 域。
- *   - staticConfigs 是平台级 client/configs，与 family 无关。
- *   - 购买类（Stripe/PayPal/preview/createSign 等）已通过 request.providerId 在 provider 内路由。
+ * 其余说明见各方法注释；zai/bigmodel enterprise 读路径按 request.family 路由，缺省 bigmodel。
  */
-export function createCodingPlanSubscriptionService(
+export function createCodingPlanSubscriptionServices(
   dependencies: CodingPlanSubscriptionServiceDependencies,
-): ICodingPlanSubscriptionService {
+): {
+  codingPlanSubscriptionService: ICodingPlanSubscriptionService;
+  runtimeConfigService: IRuntimeConfigService;
+  accountModelProjectsService: IAccountModelProjectsService;
+} {
   const bigmodelProvider = new BigModelCodingPlanSubscriptionProvider(dependencies);
   const zaiProvider = new ZaiCodingPlanSubscriptionProvider(dependencies);
 
@@ -43,16 +48,8 @@ export function createCodingPlanSubscriptionService(
     family?: "bigmodel" | "zai",
   ): BigModelCodingPlanSubscriptionProvider => (family === "zai" ? zaiProvider : bigmodelProvider);
 
-  return {
-    batchPreview: (request) => bigmodelProvider.batchPreview(request),
-    getStaticProducts: () => bigmodelProvider.getStaticProducts(),
-    getStaticTeamProducts: () => bigmodelProvider.getStaticTeamProducts(),
-    getStartPlanPreview: () => bigmodelProvider.getStartPlanPreview(),
-    getManualClaimPlanPreviews: () => bigmodelProvider.getManualClaimPlanPreviews(),
-    claimManualPlan: (request) => bigmodelProvider.claimManualPlan(request),
-    getOffPeakClientConfig: (options) => bigmodelProvider.getOffPeakClientConfig(options),
-    // 动态工作流灰度：与 client/configs 同源，
-    // 因此和其它平台级配置一样固定走 bigmodel provider，与 family 无关。
+  const runtimeConfigService: IRuntimeConfigService = {
+    // 动态工作流灰度：与 client/configs 同源，固定走 bigmodel provider（与 family 无关）。
     // 用户选择在这里套到「提供」上，renderer 读到的就是生效值；规则只写在 shared 的
     // applyDynamicWorkflowUserMode 里，renderer 不自己算。
     getDynamicWorkflowClientConfig: async (options) => {
@@ -61,31 +58,30 @@ export function createCodingPlanSubscriptionService(
       return resolveUserMode ? applyDynamicWorkflowUserMode(offer, await resolveUserMode()) : offer;
     },
     getModelContextBudgetStrategy: () => bigmodelProvider.getModelContextBudgetStrategy(),
-    getBillingDiscount: () => bigmodelProvider.getBillingDiscount(),
     getRequestVerificationConfig: () => bigmodelProvider.getRequestVerificationConfig(),
     getForceUpdateConfig: () => bigmodelProvider.getForceUpdateConfig(),
-    productInfo: (request) => bigmodelProvider.productInfo(request),
-    preview: (request) => bigmodelProvider.preview(request),
-    createSign: (request) => bigmodelProvider.createSign(request),
-    updateSign: (request) => bigmodelProvider.updateSign(request),
-    checkPayment: (request) => bigmodelProvider.checkPayment(request),
-    checkPendingOrders: (request) => bigmodelProvider.checkPendingOrders(request),
-    queryStripeCards: (request) => bigmodelProvider.queryStripeCards(request),
-    bindStripeCard: (request) => bigmodelProvider.bindStripeCard(request),
-    unbindStripeCard: (request) => bigmodelProvider.unbindStripeCard(request),
-    payStripe: (request) => bigmodelProvider.payStripe(request),
-    checkPaypalSupport: (request) => bigmodelProvider.checkPaypalSupport(request),
-    createPaypalSetupToken: (request) => bigmodelProvider.createPaypalSetupToken(request),
-    subscribePaypal: (request) => bigmodelProvider.subscribePaypal(request),
+  };
+
+  const accountModelProjectsService: IAccountModelProjectsService = {
     getEnterprisePricing: (request) =>
       resolveEnterprisePricingProvider(request?.family).getEnterprisePricing(request),
-    getEnterpriseBalance: () => bigmodelProvider.getEnterpriseBalance(),
-    calculateEnterpriseOrder: (request) => bigmodelProvider.calculateEnterpriseOrder(request),
-    createEnterpriseOrder: (request) => bigmodelProvider.createEnterpriseOrder(request),
-    getEnterprisePendingOrders: () => bigmodelProvider.getEnterprisePendingOrders(),
-    cancelEnterpriseOrder: (request) => bigmodelProvider.cancelEnterpriseOrder(request),
-    continueEnterpriseOrderPayment: (request) =>
-      bigmodelProvider.continueEnterpriseOrderPayment(request),
-    checkEnterpriseOrderStatus: (request) => bigmodelProvider.checkEnterpriseOrderStatus(request),
   };
+
+  const codingPlanSubscriptionService = createRetiredCodingPlanSubscriptionService({
+    getOffPeakClientConfig: (options) => bigmodelProvider.getOffPeakClientConfig(options),
+    ...runtimeConfigService,
+    ...accountModelProjectsService,
+  });
+
+  return { codingPlanSubscriptionService, runtimeConfigService, accountModelProjectsService };
+}
+
+/**
+ * 兼容旧装配入口：只取 legacy 服务面。新装配请改用 createCodingPlanSubscriptionServices，
+ * 以获得同一 provider 实例上的 runtimeConfigService / accountModelProjectsService 窄接口。
+ */
+export function createCodingPlanSubscriptionService(
+  dependencies: CodingPlanSubscriptionServiceDependencies,
+): ICodingPlanSubscriptionService {
+  return createCodingPlanSubscriptionServices(dependencies).codingPlanSubscriptionService;
 }

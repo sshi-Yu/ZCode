@@ -168,8 +168,12 @@ export const ServiceChannels = {
   ExtensionGrants: "extension-grants",
   /** 本地 usage 统计服务 */
   UsageStats: "usage-stats",
-  /** Coding Plan 订阅购买服务 */
+  /** Coding Plan 订阅购买服务（已退役商业动作；仅剩兼容拒绝与少量保留读取，见个人工作台后端契约附录） */
   CodingPlanSubscription: "coding-plan-subscription",
+  /** 公共运行配置读取（动态工作流/请求校验/强更/预算），与交易解耦的保留能力 */
+  RuntimeConfig: "runtime-config",
+  /** 已有账号模型与团队项目读取（含必要项目 Key 准备），与交易解耦的保留能力 */
+  AccountModelProjects: "account-model-projects",
   ClientConfig: "client-config",
   /** ZCode 客户端场景配置服务 */
   ClientScenes: "client-scenes",

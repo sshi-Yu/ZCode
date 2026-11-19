@@ -1,7 +1,5 @@
 /* eslint-disable max-lines -- Model Provider 设置页需要集中编排导航、表单和 OAuth 交互，后续整体拆分时再收敛。 */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useStore } from "zustand";
-import { marketingNavigation, finishMarketingNavigation } from "@/lib/marketingNavigation.js";
 import {
   getProviderFormApiKey,
   type ProviderSettingsFormProvider,
@@ -63,7 +61,6 @@ import {
   useCodingPlanEntitlements,
 } from "./model-provider-section/useCodingPlanEntitlements.js";
 import { sortModelProvidersForDisplay } from "@/lib/modelProviderOrdering.js";
-import { readCodingPlanPurchaseTokenState } from "@/settings/model-provider-section/codingPlanPurchaseAuth.js";
 import { useSettings } from "@/hooks/useSettingService.js";
 import { resolveLogoutProviderFamilyDomain } from "@/lib/providerFamilyDomainSettings.js";
 import {
@@ -255,7 +252,7 @@ export function ModelProviderSection({
   const { intl, locale } = useZCodeIntl();
   const confirmDialog = useConfirmDialog();
   const platform = usePlatform();
-  const { modelSelectionService, oauthService } = useServices();
+  const { oauthService } = useServices();
   const {
     modelProviders,
     providerTemplates,
@@ -313,9 +310,6 @@ export function ModelProviderSection({
     useState<BuiltinModelProviderId | null>(null);
   const [codingPlanDisconnectProviderId, setCodingPlanDisconnectProviderId] =
     useState<BuiltinModelProviderId | null>(null);
-  // 死代码清理：refreshToken 只被已下线的原生购买面板消费，这里仅保留 setter 供
-  // 登录/解绑后的 refreshCodingPlanProducts 契约调用（保持共享 helper 签名不变）。
-  const [, setCodingPlanProductsRefreshToken] = useState(0);
   const [pendingCreatedProviderId, setPendingCreatedProviderId] = useState<string | null>(null);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [creatingProvider, setCreatingProvider] = useState(false);
@@ -384,11 +378,7 @@ export function ModelProviderSection({
     null,
   );
   const activeOAuthProvider = accountAvailability?.loginProvider ?? null;
-  const codingPlanPurchaseTokenAuthenticatedByProviderId = useMemo(
-    () => readCodingPlanPurchaseTokenState(accountAvailability),
-    [accountAvailability],
-  );
-  const purchaseAuthReadSequence = useRef(0);
+  const accountAvailabilityReadSequence = useRef(0);
   const [pendingConnectionSelections, setPendingConnectionSelections] =
     useState<ProviderFamilyConnectionSelectionSettings>({});
   const presetSubscriptionCompletionProviderIdRef = useRef<BuiltinModelProviderId | null>(null);
@@ -406,10 +396,7 @@ export function ModelProviderSection({
     update: updateSharedSettings,
   } = useSettings();
   const authenticatedEnterpriseProducts = useEnterpriseCodingPlanProducts({
-    enabled:
-      codingPlanPurchaseTokenAuthenticatedByProviderId[
-        BUILTIN_MODEL_PROVIDER_IDS.bigmodelTeamCodingPlan
-      ] === true,
+    enabled: accountAvailability?.families.includes("bigmodel") === true,
     authenticated: true,
     family: "bigmodel",
   });
@@ -417,10 +404,7 @@ export function ModelProviderSection({
   // zai 团队订阅永远拉不到、也无法展示对应团队。
   // zai 独立调 hook（zai family 走 zai provider），下游合并两 family 的订阅产品。
   const authenticatedZaiEnterpriseProducts = useEnterpriseCodingPlanProducts({
-    enabled:
-      codingPlanPurchaseTokenAuthenticatedByProviderId[
-        BUILTIN_MODEL_PROVIDER_IDS.zaiTeamCodingPlan
-      ] === true,
+    enabled: accountAvailability?.families.includes("zai") === true,
     authenticated: true,
     family: "zai",
   });
@@ -444,7 +428,10 @@ export function ModelProviderSection({
       authenticatedZaiEnterpriseProducts.snapshot?.productList,
     ],
   );
-  const connectionSelections = sharedSettings?.providerFamilyConnectionSelections ?? {};
+  const connectionSelections = useMemo(
+    () => sharedSettings?.providerFamilyConnectionSelections ?? {},
+    [sharedSettings?.providerFamilyConnectionSelections],
+  );
   const familyConnectionSettingsFailed = sharedSettingsError !== null && sharedSettings === null;
   const effectiveConnectionSelections = useMemo(
     () => ({
@@ -489,21 +476,17 @@ export function ModelProviderSection({
     });
   }, [connectionSelections]);
 
-  const refreshCodingPlanProducts = useCallback(() => {
-    setCodingPlanProductsRefreshToken((current) => current + 1);
-  }, []);
-
-  const refreshCodingPlanPurchaseTokenState = useCallback(
+  const refreshAccountAvailability = useCallback(
     async (
       options: {
         clearUserWhenLoggedOut?: boolean;
         shouldApply?: () => boolean;
       } = {},
     ) => {
-      const sequence = ++purchaseAuthReadSequence.current;
+      const sequence = ++accountAvailabilityReadSequence.current;
       const availability = await oauthService.getAccountAvailability();
       if (
-        sequence !== purchaseAuthReadSequence.current ||
+        sequence !== accountAvailabilityReadSequence.current ||
         (options.shouldApply && !options.shouldApply())
       )
         return null;
@@ -518,20 +501,13 @@ export function ModelProviderSection({
   );
 
   const refreshProviderPanelAfterAuthChange = useCallback(
-    async ({
-      refreshPlanSnapshots = true,
-      refreshReason = "auth",
-    }: {
-      refreshPlanSnapshots?: boolean;
-      refreshReason?: "auth" | "purchase";
-    }) => {
+    async ({ refreshPlanSnapshots = true }: { refreshPlanSnapshots?: boolean }) => {
       await refreshModelProviderPanelAfterAuthChange({
         refreshModelProviders: refresh,
         refreshCodingPlanEntitlements: () =>
-          refreshCodingPlanEntitlements({ force: true, reason: refreshReason }),
+          refreshCodingPlanEntitlements({ force: true, reason: "auth" }),
         refreshTeamPlanProducts: refreshAuthenticatedEnterpriseProducts,
-        refreshCodingPlanProducts,
-        refreshPurchaseTokenState: refreshCodingPlanPurchaseTokenState,
+        refreshAccountAvailability,
         refreshPlanSnapshots,
       });
     },
@@ -539,9 +515,7 @@ export function ModelProviderSection({
       refresh,
       refreshAuthenticatedEnterpriseProducts,
       refreshCodingPlanEntitlements,
-      refreshCodingPlanProducts,
-      refreshCodingPlanPurchaseTokenState,
-      refreshModelProviderPanelAfterAuthChange,
+      refreshAccountAvailability,
     ],
   );
 
@@ -588,14 +562,14 @@ export function ModelProviderSection({
   useEffect(() => {
     let disposed = false;
 
-    void refreshCodingPlanPurchaseTokenState({
+    void refreshAccountAvailability({
       shouldApply: () => !disposed,
     });
 
     return () => {
       disposed = true;
     };
-  }, [providerConnectionRefreshSignal, refreshCodingPlanPurchaseTokenState]);
+  }, [providerConnectionRefreshSignal, refreshAccountAvailability]);
 
   const presetProviders = useMemo(
     () =>
@@ -712,7 +686,9 @@ export function ModelProviderSection({
       return;
     }
     if (
-      codingPlanPurchaseTokenAuthenticatedByProviderId[selectedNavItem.presetId] !== true ||
+      !accountAvailability?.families.includes(
+        resolveModelProviderFamilyIdByProviderId(selectedNavItem.presetId)!,
+      ) ||
       presetSubscriptionProviderId === selectedNavItem.presetId ||
       codingPlanDisconnectProviderId === selectedNavItem.presetId
     ) {
@@ -733,7 +709,7 @@ export function ModelProviderSection({
       });
     });
   }, [
-    codingPlanPurchaseTokenAuthenticatedByProviderId,
+    accountAvailability,
     codingPlanDisconnectProviderId,
     presetSubscriptionProviderId,
     selectedNavItem,
@@ -866,11 +842,8 @@ export function ModelProviderSection({
           providerFamilyDomainUpdatedAt: Date.now(),
           providerFamilyDomainMigrated: true,
         });
-        await refreshCodingPlanPurchaseTokenState({ clearUserWhenLoggedOut: true });
+        await refreshAccountAvailability({ clearUserWhenLoggedOut: true });
         await refresh();
-        // 解绑后 batch-preview 的订阅/鉴权态已经失效，套餐卡片内部缓存必须刷新，
-        // 否则按钮会继续沿用解绑前的 purchased 或 authenticated 状态。
-        refreshCodingPlanProducts();
         // unlink 前的 React 闭包里仍可能保留旧 Start/Coding provider key。
         // 解绑按钮只等待本地 logout 和 provider 列表刷新；权益 hook 会在新 provider 快照落地后清空旧状态。
       } catch (error) {
@@ -890,11 +863,8 @@ export function ModelProviderSection({
       platform,
       updateSharedSettings,
       sharedSettings?.providerFamilyDomain,
-      modelSelectionService,
       refresh,
-      refreshCodingPlanEntitlements,
-      refreshCodingPlanProducts,
-      refreshCodingPlanPurchaseTokenState,
+      refreshAccountAvailability,
     ],
   );
 
@@ -1039,47 +1009,6 @@ export function ModelProviderSection({
     [createPersonalProvider, locale],
   );
 
-  const marketingRequest = useStore(marketingNavigation, (state) => state.request);
-  useEffect(() => {
-    if (marketingRequest?.target.page !== "settings" || !marketingRequest.target.provider_id)
-      return;
-    if (
-      loading ||
-      modelProvidersRefreshing ||
-      sharedSettingsLoading ||
-      navigationItems.some((item) => item.type === "codingPlanLoading")
-    )
-      return;
-    const providerId = marketingRequest.target.provider_id;
-    const item = navigationItems.find((item) =>
-      item.type === "custom"
-        ? // 当前表单契约使用 providerId；旧 id 会让所有自定义提供商被误判为不存在。
-          item.provider.providerId === providerId
-        : "presetId" in item &&
-          item.presetId === providerId &&
-          (!isStartPlanModelProviderId(providerId) || item.type === "codingPlan"),
-    );
-    if (!item) {
-      finishMarketingNavigation(marketingRequest.id, new Error("marketing_provider_unavailable"));
-      return;
-    }
-    const key = resolveModelProviderSideSelectionKey(item);
-    if (selectedNodeKey !== key) {
-      // 只定位侧栏节点；禁止复用带 mode 的选择路径，避免营销导航修改套餐连接。
-      setSelectedNodeKey(key);
-    } else if (selectedNavItem) {
-      finishMarketingNavigation(marketingRequest.id);
-    }
-  }, [
-    marketingRequest,
-    loading,
-    modelProvidersRefreshing,
-    sharedSettingsLoading,
-    navigationItems,
-    selectedNodeKey,
-    selectedNavItem,
-  ]);
-
   const handleReorderProviderIds = useCallback(
     async (orderedGroupProviderIds: string[]) => {
       const groupProviderIdSet = new Set(orderedGroupProviderIds);
@@ -1115,6 +1044,14 @@ export function ModelProviderSection({
   // 这里改为始终先渲染布局壳子，再按分组展示 loading，避免用户误以为页面坏了。
   const presetLoading = loading || modelProvidersRefreshing;
   const customLoading = loading || modelProvidersRefreshing;
+  const selectedFamily =
+    selectedNavItem && "presetId" in selectedNavItem
+      ? resolveModelProviderFamilyIdByProviderId(selectedNavItem.presetId)
+      : null;
+  const teamProjects =
+    (selectedFamily ?? effectiveProviderFamilyDomain) === "zai"
+      ? authenticatedZaiEnterpriseProducts
+      : authenticatedEnterpriseProducts;
 
   if (loadError) {
     return (
@@ -1143,7 +1080,7 @@ export function ModelProviderSection({
               name: error instanceof Error ? error.name : "unknown",
             });
           }
-          await refreshCodingPlanPurchaseTokenState();
+          await refreshAccountAvailability();
           await refreshModelProviderSection({
             refresh,
             refreshTeamPlanProducts: refreshAuthenticatedEnterpriseProducts,
@@ -1171,6 +1108,19 @@ export function ModelProviderSection({
               : "settings.modelProvider.connectionUnavailable",
           })}
         </p>
+      ) : null}
+      {teamProjects.error && !templatePickerOpen ? (
+        <div
+          className="mb-3 flex flex-wrap items-center gap-2"
+          data-testid="team-projects-load-error"
+        >
+          <p role="alert" className="text-ui-base text-destructive">
+            {intl.formatMessage({ id: "settings.modelProvider.teamProjectsLoadError" })}
+          </p>
+          <Button type="button" variant="outline" onClick={() => void teamProjects.refresh()}>
+            {intl.formatMessage({ id: "common.retry" })}
+          </Button>
+        </div>
       ) : null}
       {templatePickerOpen ? (
         <ProviderTemplatePicker
@@ -1206,9 +1156,6 @@ export function ModelProviderSection({
           })()}
           presetLoading={presetLoading}
           codingPlanAuthError={oauthError}
-          codingPlanPurchaseTokenAuthenticatedByProviderId={
-            codingPlanPurchaseTokenAuthenticatedByProviderId
-          }
           presetSubscriptionProviderId={presetSubscriptionProviderId}
           codingPlanStatusSyncProviderId={codingPlanStatusSyncProviderId}
           codingPlanDisconnectProviderId={codingPlanDisconnectProviderId}
@@ -1241,9 +1188,13 @@ export function ModelProviderSection({
             );
             platform.openExternal(BIGMODEL_REGISTRATION_URL);
           }}
-          onCodingPlanPurchaseComplete={async () => {
-            await refreshProviderPanelAfterAuthChange({ refreshReason: "purchase" });
-          }}
+          onRefreshPlanEntitlement={() =>
+            refreshCodingPlanEntitlements({
+              force: true,
+              reason: "manual",
+              invalidateBalanceCache: true,
+            })
+          }
         />
       )}
     </ModelProviderSectionLayout>

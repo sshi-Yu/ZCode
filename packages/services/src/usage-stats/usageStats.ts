@@ -37,3 +37,27 @@ export interface IUsageStatsService {
 export const IUsageStatsService = createServiceDescriptor<IUsageStatsService>(
   ServiceChannels.UsageStats,
 );
+
+/** 旧客户端兼容；重置专用读取/写入在当前 Host 和远端代理边界均拒绝，不转交旧 Host。 */
+export function createRetiredCodingPlanResetMethods(): Pick<
+  IUsageStatsService,
+  | "getCodingPlanResetStatus"
+  | "requestCodingPlanResetOpportunity"
+  | "useCodingPlanReset"
+  | "markCodingPlanResetHistoryRead"
+> {
+  return {
+    async getCodingPlanResetStatus() {
+      throw new Error("commercial_service_unsupported:getCodingPlanResetStatus");
+    },
+    async requestCodingPlanResetOpportunity() {
+      throw new Error("commercial_service_unsupported:requestCodingPlanResetOpportunity");
+    },
+    async useCodingPlanReset() {
+      throw new Error("commercial_service_unsupported:useCodingPlanReset");
+    },
+    async markCodingPlanResetHistoryRead() {
+      throw new Error("commercial_service_unsupported:markCodingPlanResetHistoryRead");
+    },
+  };
+}

@@ -26,6 +26,8 @@ export const REMOTE_WORKSPACE_RPC_CHANNELS = [
   "sourceServerWorkspaceService",
   "usageStatsService",
   "codingPlanSubscriptionService",
+  "runtimeConfigService",
+  "accountModelProjectsService",
   "clientScenesService",
   "skillsService",
   "skillSyncService",

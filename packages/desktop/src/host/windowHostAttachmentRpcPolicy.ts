@@ -54,6 +54,8 @@ const WEB_REMOTE_REPLAYABLE_ALLOWED_CHANNELS = new Set<string>([
   ServiceChannels.SourceServerWorkspace,
   ServiceChannels.UsageStats,
   ServiceChannels.CodingPlanSubscription,
+  ServiceChannels.RuntimeConfig,
+  ServiceChannels.AccountModelProjects,
   ServiceChannels.ClientScenes,
   ServiceChannels.Skills,
   // 手机端没有同步 UI，只在 UI 层隐藏不足以阻止写入：导入方法在 RPC 层仍可调用。
@@ -184,6 +186,9 @@ export function exposeWindowHostAttachmentServices(params: {
           ProxyChannel.fromService({
             getSnapshot: highspeed.getSnapshot.bind(highspeed),
             prepareTurn: highspeed.prepareTurn.bind(highspeed),
+            ...(highspeed.prepareExistingTurn
+              ? { prepareExistingTurn: highspeed.prepareExistingTurn.bind(highspeed) }
+              : {}),
             invalidateCard: highspeed.invalidateCard.bind(highspeed),
             getCurrentOwnerKey: highspeed.getCurrentOwnerKey.bind(highspeed),
             healthy: highspeed.healthy.bind(highspeed),

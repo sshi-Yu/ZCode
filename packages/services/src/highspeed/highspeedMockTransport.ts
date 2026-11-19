@@ -1,5 +1,6 @@
 import type {
   HighspeedCardUsage,
+  HighspeedDrawRequest,
   HighspeedDrawResponse,
   HighspeedMockScenario,
 } from "@zcode/shared";
@@ -12,7 +13,9 @@ export function createHighspeedMockTransport(options?: {
   scenario?: HighspeedMockScenario;
   now?: () => number;
   delay?: (milliseconds: number) => Promise<void>;
-}): HighspeedServiceTransport {
+}): HighspeedServiceTransport & {
+  draw(request: HighspeedDrawRequest): Promise<HighspeedDrawResponse>;
+} {
   const scenario = options?.scenario ?? "hit-fast";
   const now = options?.now ?? Date.now;
   const delay =

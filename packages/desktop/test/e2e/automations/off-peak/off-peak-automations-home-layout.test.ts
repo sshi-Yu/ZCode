@@ -6,7 +6,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  TID_AUTOMATION_CREATE_MANUALLY,
+  TID_AUTOMATION_CREATE_MENU,
   TID_AUTOMATIONS_OPEN,
   TID_OFFPEAK_CREATE_BUTTON,
 } from "@zcode/shared/test-ids";
@@ -16,7 +16,6 @@ import {
   restoreElectronRendererContentSize,
   setCurrentElectronRendererContentSize,
   type ElectronRendererContentSizeSnapshot,
-  waitForTestIdByDom,
 } from "#e2e/helpers/desktop-app";
 import { prepareV4ConversationE2E } from "#e2e/helpers/v4-conversation";
 
@@ -38,7 +37,7 @@ describe("Automations 空首页 Figma 布局 E2E", () => {
     await clearAppData();
   });
 
-  it("按空状态、保持唤醒、两组双列模板的顺序渲染", async function () {
+  it("保留定时任务模板布局，不显示闲时创建入口", async function () {
     this.timeout(150000);
 
     await prepareV4ConversationE2E({ skipProvider: true });
@@ -57,9 +56,8 @@ describe("Automations 空首页 Figma 布局 E2E", () => {
     await clickTestIdByDom(TID_AUTOMATIONS_OPEN, {
       timeoutMsg: "侧栏没有出现 Automations 入口",
     });
-    await waitForTestIdByDom(TID_OFFPEAK_CREATE_BUTTON, {
-      timeoutMsg: "闲时任务创建按钮没有出现（mock 灰度未命中？）",
-    });
+    expect(await $(`[data-testid="${TID_OFFPEAK_CREATE_BUTTON}"]`).isExisting()).toBe(false);
+    expect(await $(`[data-testid="${TID_AUTOMATION_CREATE_MENU}"]`).isDisplayed()).toBe(true);
     await browser.waitUntil(
       async () =>
         browser.execute(() =>
@@ -67,7 +65,6 @@ describe("Automations 空首页 Figma 布局 E2E", () => {
             "[data-automations-content]",
             "[data-automations-empty-state]",
             "[data-automations-keep-awake]",
-            "[data-automations-idle-templates]",
             "[data-automations-scheduled-templates]",
           ].every((selector) => document.querySelector(selector)?.getBoundingClientRect().width),
         ),
@@ -81,7 +78,7 @@ describe("Automations 空首页 Figma 布局 E2E", () => {
     await browser.waitUntil(
       () =>
         browser.execute(() =>
-          ["[data-automations-idle-templates]", "[data-automations-scheduled-templates]"].every(
+          ["[data-automations-scheduled-templates]"].every(
             (selector) => {
               const section = document.querySelector<HTMLElement>(selector);
               return (
@@ -98,7 +95,7 @@ describe("Automations 空首页 Figma 布局 E2E", () => {
     );
 
     const layout = await browser.execute(
-      (offPeakCreateTestId, manualCreateTestId) => {
+      () => {
         const requireElement = (selector: string): HTMLElement => {
           const element = document.querySelector<HTMLElement>(selector);
           if (!element) throw new Error(`Missing element: ${selector}`);
@@ -131,10 +128,7 @@ describe("Automations 空首页 Figma 布局 E2E", () => {
         const content = requireElement("[data-automations-content]");
         const empty = requireElement("[data-automations-empty-state]");
         const keepAwake = requireElement("[data-automations-keep-awake]");
-        const idle = requireElement("[data-automations-idle-templates]");
         const scheduled = requireElement("[data-automations-scheduled-templates]");
-        const manualCreate = requireElement(`[data-testid="${manualCreateTestId}"]`);
-        const idleCreate = requireElement(`[data-testid="${offPeakCreateTestId}"]`);
         const contentStyle = getComputedStyle(content);
 
         return {
@@ -144,18 +138,12 @@ describe("Automations 空首页 Figma 布局 E2E", () => {
             Number.parseFloat(contentStyle.paddingRight),
           empty: rect(empty),
           keepAwake: rect(keepAwake),
-          idle: rect(idle),
           scheduled: rect(scheduled),
-          manualCreate: rect(manualCreate),
-          idleCreate: rect(idleCreate),
           emptyRadius: getComputedStyle(empty).borderRadius,
           keepAwakeRadius: getComputedStyle(keepAwake).borderRadius,
-          idleGrid: gridMetrics(idle),
           scheduledGrid: gridMetrics(scheduled),
         };
       },
-      TID_OFFPEAK_CREATE_BUTTON,
-      TID_AUTOMATION_CREATE_MANUALLY,
     );
 
     // Settings 统一内容框当前为 max-w-4xl（896px）+ 左右 32px padding，内列应为 832px；
@@ -164,14 +152,8 @@ describe("Automations 空首页 Figma 布局 E2E", () => {
     assertNear(layout.empty.height, 226, 1, "空状态卡高度");
     assertNear(layout.keepAwake.height, 44, 1, "Keep-awake 提示条高度");
     assertNear(layout.keepAwake.top - layout.empty.bottom, 16, 1, "空状态与提示条间距");
-    if (!(layout.empty.top < layout.keepAwake.top && layout.keepAwake.top < layout.idle.top)) {
-      throw new Error("主页顺序不是空状态 → Keep-awake → Idle-time template");
-    }
-    if (!(layout.idle.top < layout.scheduled.top)) {
-      throw new Error("Scheduled task template 没有位于 Idle-time task template 之后");
-    }
-    if (!(layout.manualCreate.right < layout.idleCreate.left)) {
-      throw new Error("空状态按钮顺序不是 Create via chat → Idle-time task");
+    if (!(layout.empty.top < layout.keepAwake.top && layout.keepAwake.top < layout.scheduled.top)) {
+      throw new Error("主页顺序不是空状态 → 保持唤醒 → 定时任务模板");
     }
     // 修复原因：Keep-awake 提示条已按当前设计契约统一为 10px，旧 E2E 仍断言 8px，
     // 导致实际布局与 UI 单元契约一致时反而误报失败。
@@ -180,7 +162,6 @@ describe("Automations 空首页 Figma 布局 E2E", () => {
         `圆角不符合设计映射：empty=${layout.emptyRadius}, keepAwake=${layout.keepAwakeRadius}`,
       );
     }
-    assertTemplateGrid(layout.idleGrid, "Idle-time task template", 3);
     assertTemplateGrid(layout.scheduledGrid, "Scheduled task template", 4);
 
     if (process.env.ZCODE_E2E_VISUAL_CAPTURE === "1") {

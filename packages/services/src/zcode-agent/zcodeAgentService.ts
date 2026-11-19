@@ -150,7 +150,6 @@ import {
   zcodeAutomationUpdateParamsSchema,
   zcodeOffPeakCreateParamsSchema,
   zcodeOffPeakListParamsSchema,
-  OFF_PEAK_PROVIDER_IDS,
   zcodeComputerUseOperationEventSchema,
   zcodeProviderRuntimeHeadersCancelledSchema,
   zcodeProviderRuntimeHeadersRequestParamsSchema,
@@ -3546,90 +3545,13 @@ export function createZCodeAgentService(
                 });
                 return;
               }
-              const grayConfig = await options
-                ?.resolveOffPeakClientConfig?.()
-                .catch(() => undefined);
-              // 工具注册后灰度被关闭/配置解析失败时，不能继续走"白名单为空"的推导
-              // （显式 model 会误报 model_not_allowed，省略 model 会以空模型落库）；直接返回稳定分类。
-              // 模型视图可同时包含两个域；必须用已有支持快照确认归属，不能从首个 Provider 猜。
-              const support =
-                resolveOffPeakAllowedModels(grayConfig).length > 0
-                  ? await offPeakTaskService.getCodingPlanSupport()
-                  : undefined;
-              const providerId = support?.supported
-                ? OFF_PEAK_PROVIDER_IDS[support.providerFamily]
-                : undefined;
-              const allowedModels = providerId
-                ? resolveOffPeakAllowedModels(grayConfig, providerId)
-                : [];
-              if (allowedModels.length === 0) {
-                await client.respond(request.id, {
-                  ok: false,
-                  failureStage: "client_validation",
-                  errorCategory: "client_validation",
-                  errorCode: "offpeak_disabled",
-                });
-                return;
-              }
-              // model 白名单预校：显式入参不在白名单返回稳定分类，
-              // 复用 client_validation 分类 + 专用 errorCode，不扩分类枚举。
-              // 匹配与 thoughtLevel/UI 同语义（trim + 大小写不敏感），命中后回写白名单原写法。
-              const model = resolveOffPeakCreateModel(allowedModels, parsed.data.model);
-              if (model === null) {
-                await client.respond(request.id, {
-                  ok: false,
-                  failureStage: "client_validation",
-                  errorCategory: "client_validation",
-                  errorCode: "model_not_allowed",
-                });
-                return;
-              }
-              const modelSelection =
-                grayConfig && providerId
-                  ? resolveOffPeakToolSelection(
-                      grayConfig.modelSelectionView,
-                      providerId,
-                      model,
-                      parsed.data.thoughtLevel,
-                    )
-                  : undefined;
-              if (!modelSelection) {
-                await client.respond(request.id, {
-                  ok: false,
-                  failureStage: "client_validation",
-                  errorCategory: "client_validation",
-                  errorCode: "model_not_allowed",
-                });
-                return;
-              }
-              const result = await offPeakTaskService.createTask({
-                title: parsed.data.title,
-                prompt: parsed.data.prompt,
-                permissionMode: parsed.data.permissionMode ?? "yolo",
-                modelSelection,
-                // 会话内创建绑定当前会话，派发时 resume 该会话执行。
-                ...(parsed.data.boundSessionId
-                  ? { boundSessionId: parsed.data.boundSessionId }
-                  : {}),
-                // workspace 由 host 从当前 session 注入（对称 automation/create），不进协议参数。
-                workspacePath: workspace.workspacePath,
-                ...(workspace.workspaceIdentity
-                  ? { workspaceIdentity: workspace.workspaceIdentity }
-                  : {}),
-              });
-              if (!result.ok) {
-                // 失败分类原样过协议（不 respondError），供 CLI handler 翻译为稳定错误。
-                await client.respond(request.id, {
-                  ok: false,
-                  failureStage: result.failureStage,
-                  errorCategory: result.errorCategory,
-                  errorCode: result.errorCode,
-                });
-                return;
-              }
+              // 退役原因：旧 CLI 即使缓存了 OffPeakCreate，也必须在读取灰度/账号/模型或取号
+              // 之前被拒绝。保留原协议判别联合，不解析新模型、更不回退普通付费模型。
               await client.respond(request.id, {
-                ok: true,
-                task: toProtocolOffPeakTaskSnapshot(result.task),
+                ok: false,
+                failureStage: "client_validation",
+                errorCategory: "client_validation",
+                errorCode: "off_peak_retired",
               });
             } catch (error) {
               await respondOffPeakInternalError(client, request, workspace, error);
@@ -4374,13 +4296,12 @@ export function createZCodeAgentService(
     runtimeLifecycleDisposable.dispose();
   }
 
-  // 3.12.2：远端灰度读取不能放进客户端就绪与创建命令：失败时串行重试会阻塞普通聊天。
-  // 注册只判断本地支持能力；灰度、套餐与模型准入仍由 offPeak/create handler 在取号前校验。
+  // OffPeakCreate 已退役；此能力仅装配只读 OffPeakList，不再依赖/获取远端灰度或模型目录。
   function isOffPeakToolSupported(params: {
     workspaceIdentity?: string;
     remoteSessionId?: string;
   }): boolean {
-    if (!options?.resolveOffPeakClientConfig || !options.resolveOffPeakTaskService) return false;
+    if (!options?.resolveOffPeakTaskService) return false;
     if (params.remoteSessionId) return false;
     return !params.workspaceIdentity || !isRemoteWorkspaceIdentity(params.workspaceIdentity);
   }

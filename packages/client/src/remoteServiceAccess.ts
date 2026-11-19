@@ -36,6 +36,10 @@ import {
   IVoiceInputService,
   IUsageStatsService,
   ICodingPlanSubscriptionService,
+  createRetiredCodingPlanSubscriptionService,
+  createRetiredCodingPlanResetMethods,
+  IRuntimeConfigService,
+  IAccountModelProjectsService,
   IClientConfigService,
   IClientScenesService,
   ICloudContentService,
@@ -117,6 +121,8 @@ export class RemoteServiceAccess implements IServiceAccessor {
   readonly voiceInputService?: IVoiceInputService;
   readonly usageStatsService: IUsageStatsService;
   readonly codingPlanSubscriptionService: ICodingPlanSubscriptionService;
+  readonly runtimeConfigService: IRuntimeConfigService;
+  readonly accountModelProjectsService: IAccountModelProjectsService;
   readonly clientConfigService: IClientConfigService;
   readonly clientScenesService: IClientScenesService;
   readonly cloudContentService: ICloudContentService;
@@ -298,12 +304,36 @@ export class RemoteServiceAccess implements IServiceAccessor {
           channelClient.getChannel(IVoiceInputService.channelName),
         )
       : undefined;
-    this.usageStatsService = ProxyChannel.toService<IUsageStatsService>(
+    const usage = ProxyChannel.toService<IUsageStatsService>(
       channelClient.getChannel(IUsageStatsService.channelName),
     );
-    this.codingPlanSubscriptionService = ProxyChannel.toService<ICodingPlanSubscriptionService>(
+    this.usageStatsService = {
+      getAppUsageSnapshot: (request) => usage.getAppUsageSnapshot(request),
+      getCodingPlanUsageSnapshot: (request) => usage.getCodingPlanUsageSnapshot(request),
+      getCodingPlanRegularTps: (request) => usage.getCodingPlanRegularTps!(request),
+      getSnapshot: (request) => usage.getSnapshot(request),
+      getEntitlementSnapshot: (request) => usage.getEntitlementSnapshot(request),
+      ...createRetiredCodingPlanResetMethods(),
+    };
+    const legacy = ProxyChannel.toService<ICodingPlanSubscriptionService>(
       channelClient.getChannel(ICodingPlanSubscriptionService.channelName),
     );
+    // 旧 Host 尚无窄频道：保留读取沿既有频道委托，不探测/重试，不增加缓存或请求。
+    // 商业方法在本地明确拒绝，绝不转发给仍提供交易能力的旧 Host。
+    this.runtimeConfigService = {
+      getDynamicWorkflowClientConfig: (options) => legacy.getDynamicWorkflowClientConfig(options),
+      getModelContextBudgetStrategy: () => legacy.getModelContextBudgetStrategy(),
+      getRequestVerificationConfig: () => legacy.getRequestVerificationConfig(),
+      getForceUpdateConfig: () => legacy.getForceUpdateConfig(),
+    };
+    this.accountModelProjectsService = {
+      getEnterprisePricing: (request) => legacy.getEnterprisePricing(request),
+    };
+    this.codingPlanSubscriptionService = createRetiredCodingPlanSubscriptionService({
+      getOffPeakClientConfig: (options) => legacy.getOffPeakClientConfig(options),
+      ...this.runtimeConfigService,
+      ...this.accountModelProjectsService,
+    });
     this.clientConfigService = ProxyChannel.toService<IClientConfigService>(
       channelClient.getChannel(IClientConfigService.channelName),
     );
@@ -313,15 +343,35 @@ export class RemoteServiceAccess implements IServiceAccessor {
     this.cloudContentService = ProxyChannel.toService<ICloudContentService>(
       channelClient.getChannel(ICloudContentService.channelName),
     );
-    this.marketingTouchService = ProxyChannel.toService<IMarketingTouchService>(
-      channelClient.getChannel(IMarketingTouchService.channelName),
-    );
+    this.marketingTouchService = {
+      async query() { throw new Error("commercial_service_unsupported:query"); },
+      async report() { throw new Error("commercial_service_unsupported:report"); },
+    };
     this.offPeakTaskService = ProxyChannel.toService<IOffPeakTaskService>(
       channelClient.getChannel(IOffPeakTaskService.channelName),
     );
-    this.highspeedCardService = ProxyChannel.toService<IHighspeedCardService>(
+    const highspeed = ProxyChannel.toService<IHighspeedCardService>(
       channelClient.getChannel(IHighspeedCardService.channelName),
     );
+    // 快照后再调用旧 prepareTurn 存在过期后抽卡竞态；只调用有「绝不 draw」契约的新方法。
+    const prepareExisting: IHighspeedCardService["prepareTurn"] = async (params) => {
+      try {
+        return await highspeed.prepareExistingTurn!(params);
+      } catch (error) {
+        if (error instanceof Error && error.message === "Method not found: prepareExistingTurn") {
+          return { kind: "fallback", reason: "unavailable", nextDrawAt: null };
+        }
+        throw error;
+      }
+    };
+    this.highspeedCardService = {
+      prepareTurn: prepareExisting,
+      prepareExistingTurn: prepareExisting,
+      getSnapshot: () => highspeed.getSnapshot(),
+      invalidateCard: (cardId) => highspeed.invalidateCard(cardId),
+      getCurrentOwnerKey: () => highspeed.getCurrentOwnerKey(),
+      healthy: (cardId, ownerKey) => highspeed.healthy(cardId, ownerKey),
+    };
     this.skillsService = ProxyChannel.toService<ISkillsService>(
       channelClient.getChannel(ISkillsService.channelName),
     );

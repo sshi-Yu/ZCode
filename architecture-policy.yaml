@@ -296,6 +296,7 @@ modules:
       - task-row-hover
       # 主导航挂 nav.primary 插槽组件（docs/plugins/extension-host.md §16.4）。
       - extension-slots
+      - sidebar-bottom-activity
     publicEntrypoints:
       - packages/ui/src/project-sidebar/index.tsx
       - packages/ui/src/project-sidebar/contract.ts
@@ -1112,22 +1113,6 @@ modules:
     layers:
       adapters: .
     owner: desktop
-  # marketing-touch-controller：由 architecture:adopt 登记
-  - id: marketing-touch-controller
-    roots:
-      - packages/ui/src/marketing-touch-contract
-      - packages/ui/src/components/marketing-touch/marketingTouchController.ts
-    managed: true
-    requires:
-      - services
-      - shared
-      - ui
-    publicEntrypoints:
-      - packages/ui/src/components/marketing-touch/marketingTouchController.ts
-      - packages/ui/src/marketing-touch-contract/contract.ts
-    layers:
-      app: .
-    owner: desktop
   # data-sync-service：数据同步分类服务形状与本机设备同步状态（docs/remote/data-sync.md）
   - id: data-sync-service
     roots:
@@ -1829,6 +1814,52 @@ modules:
     layers:
       adapters: .
     owner: agent
+  # runtime-config：由 architecture:adopt 登记
+  - id: runtime-config
+    roots:
+      - packages/services/src/runtime-config
+    managed: true
+    requires: [services, shared]
+    publicEntrypoints:
+      - packages/services/src/runtime-config/index.ts
+      - packages/services/src/runtime-config/contract.ts
+    layers:
+      app: .
+    owner: desktop-settings
+  # account-model-projects：由 architecture:adopt 登记
+  - id: account-model-projects
+    roots:
+      - packages/services/src/account-model-projects
+    managed: true
+    requires: [services, shared]
+    publicEntrypoints:
+      - packages/services/src/account-model-projects/index.ts
+      - packages/services/src/account-model-projects/contract.ts
+    layers:
+      app: .
+    owner: desktop-settings
+  - id: off-peak-resident-executions
+    roots:
+      - packages/services/src/session/off-peak-resident-executions-contract
+      - packages/services/src/session/offPeakResidentExecutions.ts
+    managed: true
+    requires: [shared]
+    publicEntrypoints:
+      - packages/services/src/session/off-peak-resident-executions-contract/contract.ts
+      - packages/services/src/session/offPeakResidentExecutions.ts
+    layers: {app: .}
+    owner: conversation
+  - id: sidebar-bottom-activity
+    roots:
+      - packages/ui/src/sidebar-activity-contract
+      - packages/ui/src/sidebar-activity/SidebarBottomActivity.tsx
+    managed: true
+    requires: [ui]
+    publicEntrypoints:
+      - packages/ui/src/sidebar-activity-contract/contract.ts
+      - packages/ui/src/sidebar-activity/SidebarBottomActivity.tsx
+    layers: {ui: .}
+    owner: desktop-ui
 
 global:
   # 临时时间戳（2026-09-10）：unmanaged-new-file 只约束此日期之后首次入库的文件。
@@ -2299,8 +2330,6 @@ exceptions:
       - packages/shared/src/marketingTouch.ts
       - packages/ui/src/app-shell/WorkflowRunHoleParts.tsx
       - packages/ui/src/app-shell/WorkflowRunProvenance.tsx
-      - packages/ui/src/components/marketing-touch/MarketingDialogs.tsx
-      - packages/ui/src/components/marketing-touch/MarketingTouchProvider.tsx
       - packages/ui/src/components/workflow-timeline/WorkflowSettingsChangeRow.tsx
       - packages/ui/src/components/workflow-timeline/WorkflowTimelineFills.tsx
     reason: 已准入的存量文件只把中英二选一的 locale 类型放宽为全部界面语言（X-Client-Language 带真实界面语言，投放内容仍按中英渲染），会话创建遥测接收 Host 界面语言，时间格式化传入界面语言；owner、签名形态与模块边界不变，接管 marketing-touch/workflow-timeline 目录不在本次范围内。

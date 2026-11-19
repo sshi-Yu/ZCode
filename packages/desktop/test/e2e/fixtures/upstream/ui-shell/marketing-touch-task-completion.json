@@ -28,12 +28,12 @@
     },
     {
       "id": "marketing-touch-task-completion",
-      "description": "任务成功完成后触发营销接口刷新",
+      "description": "任务成功完成后不触发营销请求",
       "metadata": {
         "kind": "main",
         "timingPolicy": "controlled-stream",
         "source": "synthetic",
-        "syntheticReason": "延迟文本响应以观察 running 状态并在任务结束前重置轮询计时，排除定时刷新假阳性。"
+        "syntheticReason": "延迟文本响应以观察 running 和任务完成，验证完成事件不触发营销请求。"
       },
       "match": {
         "method": "POST",

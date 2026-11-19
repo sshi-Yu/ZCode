@@ -91,10 +91,9 @@ import { getAppConfigDir as getContentAppConfigDir } from "#src/paths.js";
 import { ICloudContentService } from "#src/cloud-content/cloudContent.js";
 import { createCloudContentService } from "#src/cloud-content/cloudContentService.js";
 import { IMarketingTouchService } from "#src/marketing-touch/marketingTouch.js";
-import { createMarketingTouchService } from "#src/marketing-touch/marketingTouchService.js";
+import { createRetiredMarketingTouchService } from "#src/marketing-touch/marketingTouchService.js";
 import { IVoiceInputService } from "#src/voice-input/contract.js";
 import { createVoiceInputService } from "#src/voice-input/voiceInputService.js";
-import { createMarketingAssetRegistry } from "#src/marketing-touch/marketingAssetRegistry.js";
 import type { IChannel } from "@zcode/rpc";
 import {
   readTopicResourceFromRelay,
@@ -323,7 +322,10 @@ export {
 } from "./storage/adapters/rootsResolver.js";
 export { createFsVolumeProbe } from "./storage/adapters/volumeProbe.js";
 export { runStorageScan } from "./storage/adapters/inProcessScanRunner.js";
-export { createCodingPlanSubscriptionService } from "./coding-plan-subscription/codingPlanSubscriptionService.js";
+export {
+  createCodingPlanSubscriptionService,
+  createCodingPlanSubscriptionServices,
+} from "./coding-plan-subscription/codingPlanSubscriptionService.js";
 export { createClientConfigService } from "./client-config/clientConfigService.js";
 export { createClientScenesService } from "./client-scenes/clientScenesService.js";
 export { createSkillsService } from "./skills/skillsService.js";
@@ -553,7 +555,9 @@ import {
 } from "./model-provider/accountRequestAuthService.js";
 import { createSourceServerWorkspaceService } from "./source-server-workspace/sourceServerWorkspaceService.js";
 import { createUsageStatsService } from "./usage-stats/usageStatsService.js";
-import { createCodingPlanSubscriptionService } from "./coding-plan-subscription/codingPlanSubscriptionService.js";
+import { createCodingPlanSubscriptionServices } from "./coding-plan-subscription/codingPlanSubscriptionService.js";
+import { IRuntimeConfigService } from "./runtime-config/contract.js";
+import { IAccountModelProjectsService } from "./account-model-projects/contract.js";
 import { createClientConfigService } from "./client-config/clientConfigService.js";
 import { IClientConfigService } from "./client-config/clientConfig.js";
 import { createClientScenesService } from "./client-scenes/clientScenesService.js";
@@ -605,7 +609,6 @@ import { IOffPeakTaskService } from "./session/offPeakTask.js";
 import type { HighspeedMockScenario } from "@zcode/shared";
 import { IHighspeedCardService } from "./highspeed/highspeedCard.js";
 import {
-  buildHighspeedCodingPlanAuthHeaders,
   HighspeedCardService,
   createHighspeedHttpTransport,
 } from "./highspeed/highspeedCardService.js";
@@ -697,7 +700,6 @@ import {
   zcodeAccountAccessSchema,
   zcodeProviderAccountAccessSchema,
   ZCODE_VERSION,
-  ZCODE_ENV,
   buildRuntimeZCodeApiUrl,
 } from "@zcode/shared";
 
@@ -2278,7 +2280,7 @@ export function createLocalServices(options: {
   const resolveDynamicWorkflowUserMode = isDesktopAttachedRemote
     ? undefined
     : async () => (await settingService.get()).dynamicWorkflowMode;
-  const codingPlanSubscriptionService = createCodingPlanSubscriptionService({
+  const codingPlanSubscriptionServices = createCodingPlanSubscriptionServices({
     apiClient,
     loadOAuthAccountMaterial,
     credentialService,
@@ -2288,6 +2290,8 @@ export function createLocalServices(options: {
       return buildOffPeakModelSelectionView(providerRuntime.registryService.getView());
     },
   });
+  const { codingPlanSubscriptionService, runtimeConfigService, accountModelProjectsService } =
+    codingPlanSubscriptionServices;
   // OffPeakTaskService 单例在下方 DI register IIFE 中创建（晚于 agent service）；
   // 用前向引用 holder 惰性绑定——offPeak/create 协议请求只会发生在服务集合装配完成后。
   let offPeakTaskServiceForAgent: OffPeakTaskService | undefined;
@@ -2446,7 +2450,7 @@ export function createLocalServices(options: {
       : {}),
     accountRequestAuthService,
     readRequestVerificationConfig: () =>
-      codingPlanSubscriptionService.getRequestVerificationConfig(),
+      runtimeConfigService.getRequestVerificationConfig(),
     ...(modelSelectionReadinessSource ? { modelSelectionReadinessSource } : {}),
     authorizeLocalMediaPreviewPath: options?.authorizeLocalMediaPreviewPath,
     ...offPeakToolWiring,
@@ -2454,7 +2458,7 @@ export function createLocalServices(options: {
     // 这里不按 serviceAuthorityMode 裁剪——SSH/WSL/Docker 的 desktop-attached-remote Host
     // 是它自己那些 workspace 的唯一裁决者，灰度开启时远程 workspace 同样提供工作流。
     resolveDynamicWorkflowClientConfig: () =>
-      codingPlanSubscriptionService.getDynamicWorkflowClientConfig(),
+      runtimeConfigService.getDynamicWorkflowClientConfig(),
     ...(resolveDynamicWorkflowUserMode ? { resolveDynamicWorkflowUserMode } : {}),
     forwardDynamicWorkflowUserMode: options?.forwardDynamicWorkflowUserMode,
     commandResolver: options?.zcodeAgentCommandResolver,
@@ -2956,21 +2960,11 @@ export function createLocalServices(options: {
   // 注册链上的懒工厂（如 OffPeak）会各自创建 tasks-index sqlite repo；先收集到本数组，
   // services 集合建好后在 return 前统一登记进 sharedSqliteRepos 侧表
   const sqliteReposToClose: Array<{ close(): void }> = [];
-  const marketingAssets = createMarketingAssetRegistry({
-    allowLoopback: ZCODE_ENV === "test" || process.env.NODE_ENV === "development",
-  });
+  // 个人工作台商业服务拆除：营销 touch 已退役。旧 RPC 面保留明确拒绝（不做空成功、
+  // 不再发 /api/v1/marketing/* 请求、不读取账号凭据），云端 bundle 授权来源同步移除，
+  // 旧营销资源 URL 将无法通过 cloud-content 的来源白名单校验。
   const services = new ServiceCollection()
-    .register(
-      IMarketingTouchService,
-      createMarketingTouchService({
-        apiClient,
-        getToken: () => credentialService.load("zcodejwttoken"),
-        getDeviceMid: () => options?.agentTelemetry?.getDeviceMid?.(),
-        baseUrl: buildRuntimeZCodeApiUrl(process.env, "/"),
-        appVersion: ZCODE_VERSION,
-        onSnapshot: (snapshot) => marketingAssets.accept(snapshot),
-      }),
-    )
+    .register(IMarketingTouchService, createRetiredMarketingTouchService())
     .register(
       IVoiceInputService,
       createVoiceInputService({
@@ -2985,7 +2979,7 @@ export function createLocalServices(options: {
     .register(
       ICloudContentService,
       createCloudContentService({
-        publishedAssets: marketingAssets,
+        // 营销资产授权来源已随营销服务退役；保留服务本身（通用云端内容）但来源白名单恒为空。
         cacheRoot: join(getContentAppConfigDir(), "cache", "content-bundles", randomUUID()),
       }),
     )
@@ -3058,6 +3052,11 @@ export function createLocalServices(options: {
       }),
     )
     .register(ICodingPlanSubscriptionService, codingPlanSubscriptionService)
+    .register(IRuntimeConfigService, runtimeConfigService)
+    .register(
+      IAccountModelProjectsService,
+      accountModelProjectsService,
+    )
     .register(
       IClientConfigService,
       createClientConfigService({
@@ -3186,24 +3185,8 @@ export function createLocalServices(options: {
         const transport = mockScenario
           ? createHighspeedMockTransport({ scenario: mockScenario })
           : createHighspeedHttpTransport({
-              drawUrl: `${origin}/api/v1/highspeed/draw`,
               healthyBaseUrl: `${origin}/api/v1/highspeed/`,
               logger: createServiceLogger("highspeed"),
-              drawHeaders: async () => {
-                const credentials = await resolveOffPeakCredentials(offPeakCredentialResolverDeps, {
-                  allowMockCredentials: false,
-                });
-                return buildHighspeedCodingPlanAuthHeaders({
-                  zcodeJwt: credentials.jwt,
-                  codingPlanAuthorization: credentials.codingPlanAuthorization,
-                  targetType:
-                    credentials.organizationId && credentials.projectId ? "TEAM" : "PERSONAL",
-                  ...(credentials.organizationId
-                    ? { organizationId: credentials.organizationId }
-                    : {}),
-                  ...(credentials.projectId ? { projectId: credentials.projectId } : {}),
-                });
-              },
               healthyHeaders: async () => {
                 throw new Error("highspeed healthy requires captured identity");
               },
@@ -3219,20 +3202,8 @@ export function createLocalServices(options: {
             mockScenario !== "hit-queue-edit"
               ? "session-default"
               : "highspeed",
-          // 规则 11：draw 只对 Coding Plan 用户开放；mock 场景放行以便本地验证。
-          resolveCodingPlanSupported: mockScenario
-            ? async () => true
-            : async () =>
-                (await resolveOffPeakCodingPlanSupport(offPeakCredentialResolverDeps)).supported,
-          // 规则 14：会话模型必须属于所选 Coding Plan Provider 的模型目录（Built-in Provider
-          // Config 投影）才发起新 draw；mock 场景放行以便本地验证。
-          resolveModelCovered: mockScenario
-            ? async () => true
-            : async (providerId, modelId) => {
-                const view = await providerRuntime.modelSelection.getView();
-                const provider = view.providers.find((item) => item.providerId === providerId);
-                return provider?.models.some((model) => model.modelId === modelId) ?? false;
-              },
+          // 个人工作台商业服务拆除：新 draw 已从服务层退役（无有效卡直接降级），
+          // draw 门禁（规则 11/14）随之不再装配；已有卡的加速执行仍按下方鉴权链解析。
           // 加速推理与 draw 走同一 highspeed 网关、同一 Coding Plan 双 JWT 契约：必须携带
           // zcode JWT + Coding Plan 业务 JWT + Team 身份头。此前只发 zcode JWT + 卡 ID，网关
           // 无法校验 Coding Plan 权益，返回 401 auth_failed。与 draw 头复用同一次 selected

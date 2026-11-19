@@ -140,6 +140,8 @@ export interface ZCodeOffPeakTask {
   workspacePath: string;
   workspaceIdentity?: string;
   status: ZCodeOffPeakTaskStatus;
+  /** 只读能力投影：仅当前 Host 可确认的原驻留执行可取消；历史/旧服务缺省 false，不落库。 */
+  canCancel?: boolean;
   /** FIFO 序依据（服务端权威序由取号顺序决定，本地仅展示/派发排序用）。 */
   queuedAt: number;
   startedAt?: number;

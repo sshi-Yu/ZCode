@@ -14,7 +14,7 @@ import {
   resolveAutomaticModelProviderFamilyConnectionSelection,
 } from "@/lib/modelProviderFamilyConnectionSelection.js";
 
-import { getEnterprisePricingProductsOrEmpty } from "@/root/oauthTeamPricing.js";
+import { getEnterprisePricingProducts } from "@/root/oauthTeamPricing.js";
 
 async function getUsageEntitlementSnapshotOrNull(params: {
   services: IServiceAccessor;
@@ -141,7 +141,7 @@ export async function refreshLatestModelProviderFamilySelectionAfterLogin(params
   )
     return null;
 
-  const [codingPlanEntitlement, startPlanEntitlement, teamProducts] = await Promise.all([
+  const [codingPlanEntitlement, startPlanEntitlement, teamPricing] = await Promise.all([
     getUsageEntitlementSnapshotOrNull({
       services: params.services,
       providerId: codingPlanProviderId,
@@ -152,8 +152,11 @@ export async function refreshLatestModelProviderFamilySelectionAfterLogin(params
       providerId: startPlanProviderId,
       accountAccess: accesses.get(startPlanProviderId),
     }),
-    getEnterprisePricingProductsOrEmpty(params.services, domain),
+    getEnterprisePricingProducts(params.services, domain),
   ]);
+  // 项目读取失败是未知，不能用空列表初始化另一份连接并覆盖团队发现结果。
+  if (teamPricing.status === "error") return null;
+  const teamProducts = teamPricing.productList;
   // 旧 Start 连接只保留读取，不以权益失效为由删除或自动替换成付费连接。
   const selection = resolveAutomaticModelProviderFamilyConnectionSelection({
     providerFamilyDomain: domain,

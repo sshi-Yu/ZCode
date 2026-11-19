@@ -52,7 +52,7 @@ import {
   cronPauseSelfToolEntry,
   cronUpdateToolEntry,
 } from "./cron.js";
-import { offPeakCreateToolEntry, offPeakListToolEntry } from "./off-peak.js";
+import { offPeakListToolEntry } from "./off-peak.js";
 import { searchPluginsToolEntry, suggestPluginInstallToolEntry } from "./plugin-discovery.js";
 import {
   createEnterPlanModeToolEntry,
@@ -106,7 +106,8 @@ export const builtInTools: ToolEntry[] = [
   cronUpdateToolEntry,
   cronDeleteToolEntry,
   cronPauseSelfToolEntry,
-  offPeakCreateToolEntry,
+  // 2026-11-19 商业服务拆除 C 阶段：offPeakCreateToolEntry 不再注册（off_peak_retired），
+  // 只保留 offPeakListToolEntry 只读历史；工具面与服务层 admission 同步退役，不能只靠 UI 隐藏。
   offPeakListToolEntry,
   enterPlanModeToolEntry,
   exitPlanModeToolEntry,
@@ -305,10 +306,8 @@ export function registerBuiltInTools(
     ) {
       continue;
     }
-    if (
-      (entry.metadata.name === "OffPeakCreate" || entry.metadata.name === "OffPeakList") &&
-      options.includeOffPeak !== true
-    ) {
+    if (entry.metadata.name === "OffPeakList" && options.includeOffPeak !== true) {
+      // OffPeakCreate 已退役不再注册；此门只保留只读 OffPeakList（历史可读）。
       continue;
     }
     if (

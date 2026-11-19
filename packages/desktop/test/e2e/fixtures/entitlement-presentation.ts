@@ -5,6 +5,7 @@ import { buildProviderResponsiveStartBalance } from "./provider-family-responsiv
 export interface EntitlementPresentation {
   personal: "active" | "none";
   team: "active" | "none" | "expired" | "unassigned" | "failure";
+  teamProjectsUnavailable?: boolean;
   start: "active" | "none" | "expired" | "mixed" | "pending";
 }
 
@@ -65,6 +66,7 @@ export function presentationResponse(path: string, state: EntitlementPresentatio
     };
   }
   if (path === "/api/biz/subscription/enterprise/v2/pricing") {
+    if (state.teamProjectsUnavailable) return { code: 503, msg: "E2E_TEAM_PROJECTS_UNAVAILABLE" };
     return {
       code: 200,
       data: {

@@ -1,8 +1,4 @@
-import {
-  highspeedDrawResponseSchema,
-  highspeedHealthyResponseSchema,
-  type HighspeedDrawRequest,
-} from "@zcode/shared";
+import { highspeedHealthyResponseSchema } from "@zcode/shared";
 import type { ServiceLogger } from "#src/logger/serviceLogger.js";
 import { withRequestIdHeader } from "#src/providers/api/requestIdHeaders.js";
 import type { HighspeedServiceTransport } from "./highspeedCardService.js";
@@ -10,14 +6,13 @@ import type { HighspeedServiceTransport } from "./highspeedCardService.js";
 const DIAGNOSTIC_HEADER_NAMES = ["x-request-id", "x-trace-id", "x-span-id"] as const;
 const MAX_LOG_TEXT_CHARS = 1_000;
 /**
- * 后台请求生命期上限。必须明确大于 1s 发送等待预算：慢但合法的 draw 仍能在后台落地供下一轮使用；
- * 同时保证永不返回的连接有界结束并释放 in-flight draw（spec §3 规则 6）。
+ * 已有卡的用量查询有界结束；截止时间也覆盖读取响应体。
  */
 export const HIGHSPEED_REQUEST_TIMEOUT_MS = 20_000;
 
 class HighspeedBusinessResponseError extends Error {
   constructor(
-    readonly operation: "draw" | "healthy",
+    readonly operation: "healthy",
     readonly businessCode: number,
   ) {
     super(`highspeed ${operation} failed: business code ${businessCode}`);
@@ -26,13 +21,11 @@ class HighspeedBusinessResponseError extends Error {
 }
 
 export function createHighspeedHttpTransport(options: {
-  drawUrl: string;
   healthyBaseUrl: string;
-  drawHeaders: () => Promise<Record<string, string>>;
   healthyHeaders: () => Promise<Record<string, string>>;
   fetchImpl?: typeof fetch;
   logger: Pick<ServiceLogger, "warn">;
-  /** 单次 draw/healthy 请求的生命期上限；缺省 HIGHSPEED_REQUEST_TIMEOUT_MS。 */
+  /** 单次 healthy 请求的生命期上限；缺省 HIGHSPEED_REQUEST_TIMEOUT_MS。 */
   requestTimeoutMs?: number;
 }): HighspeedServiceTransport {
   const fetchImpl = options.fetchImpl ?? fetch;
@@ -40,10 +33,9 @@ export function createHighspeedHttpTransport(options: {
   const requestTimeoutMs = options.requestTimeoutMs ?? HIGHSPEED_REQUEST_TIMEOUT_MS;
 
   async function performRequest<T>(params: {
-    operation: "draw" | "healthy";
-    method: "GET" | "POST";
+    operation: "healthy";
+    method: "GET";
     url: string;
-    body?: HighspeedDrawRequest;
     resolveHeaders: () => Promise<Record<string, string>>;
     parse: (payload: unknown) => { success: true; data: T } | { success: false; error: Error };
   }): Promise<T> {
@@ -51,10 +43,7 @@ export function createHighspeedHttpTransport(options: {
     const safeUrl = sanitizeLogUrl(params.url);
     let headers: Headers;
     try {
-      headers = withRequestIdHeader({
-        ...(params.body ? { "content-type": "application/json" } : {}),
-        ...(await params.resolveHeaders()),
-      });
+      headers = withRequestIdHeader(await params.resolveHeaders());
     } catch (error) {
       logger.warn(undefined, "Highspeed 接口请求准备失败", {
         operation: params.operation,
@@ -67,11 +56,7 @@ export function createHighspeedHttpTransport(options: {
     }
 
     const requestId = headers.get("x-request-id") ?? undefined;
-    // Bug 根因：fetch 过去没有任何 deadline。代理/服务端接受连接后永不返回时 Promise 永久 pending，
-    // 而 HighspeedCardService.inFlightDraw 只在该 Promise settle 的 finally 里释放——后续所有发送都
-    // 复用这个死 Promise、各等 1s 再降级，整个应用生命周期内不再发起新 draw、next_draw_at 也无法更新。
-    // 这里给请求一个有界生命期，超时后 abort → reject 让 finally 得以执行；deadline 同时覆盖响应体
-    // 读取，服务端在 headers 之后停滞同样会被终止（与 bots/providers/providerRequest.ts 同一做法）。
+    // 代理接受连接或返回响应头后仍可能停滞；截止时间覆盖请求及响应体读取。
     const controller = new AbortController();
     const deadline = setTimeout(() => {
       controller.abort(
@@ -85,7 +70,6 @@ export function createHighspeedHttpTransport(options: {
           method: params.method,
           headers,
           signal: controller.signal,
-          ...(params.body ? { body: JSON.stringify(params.body) } : {}),
         });
       } catch (error) {
         // Bug 原因：Highspeed 过去只把 fetch 异常透传到 RPC，无法区分失败的接口与请求链路。
@@ -118,15 +102,6 @@ export function createHighspeedHttpTransport(options: {
   }
 
   return {
-    draw: (request, headers) =>
-      performRequest({
-        operation: "draw",
-        method: "POST",
-        url: options.drawUrl,
-        body: request,
-        resolveHeaders: headers ? async () => headers : options.drawHeaders,
-        parse: (payload) => highspeedDrawResponseSchema.safeParse(payload),
-      }),
     async healthy(cardId, headers) {
       const parsed = await performRequest({
         operation: "healthy",
@@ -147,8 +122,8 @@ export function createHighspeedHttpTransport(options: {
 
 async function readHighspeedResponse<T>(params: {
   logger: Pick<ServiceLogger, "warn">;
-  operation: "draw" | "healthy";
-  method: "GET" | "POST";
+  operation: "healthy";
+  method: "GET";
   rawUrl: string;
   safeUrl: string;
   requestId: string | undefined;
@@ -223,8 +198,8 @@ async function readHighspeedResponse<T>(params: {
 function logResponseFailure(
   params: {
     logger: Pick<ServiceLogger, "warn">;
-    operation: "draw" | "healthy";
-    method: "GET" | "POST";
+    operation: "healthy";
+    method: "GET";
     safeUrl: string;
     requestId: string | undefined;
     startedAt: number;

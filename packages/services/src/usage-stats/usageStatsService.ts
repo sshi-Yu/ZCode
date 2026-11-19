@@ -5,12 +5,6 @@ import type {
   CodingPlanUsageRequest,
   CodingPlanUsageSnapshot,
   CodingPlanRegularTpsRequest,
-  CodingPlanResetOpportunityRequest,
-  CodingPlanResetOpportunityResult,
-  CodingPlanResetScopeRequest,
-  CodingPlanResetStatusSnapshot,
-  CodingPlanResetUseRequest,
-  CodingPlanResetUseResult,
   UsageEntitlementRequest,
   UsageEntitlementSnapshot,
   UsageStatsRequest,
@@ -20,7 +14,7 @@ import { isCodingPlanModelProviderId } from "@zcode/shared";
 import type { OAuthAccountMaterial } from "#src/oauth/repo/oauthCredentialRepo.js";
 import type { IAccountRequestAuthService } from "../model-provider/accountRequestAuthService.js";
 import type { IZCodeAgentService } from "../zcode-agent/zcodeAgent.js";
-import type { IUsageStatsService } from "./usageStats.js";
+import { createRetiredCodingPlanResetMethods, type IUsageStatsService } from "./usageStats.js";
 import {
   BigModelUsageQuotaProvider,
   type UsageApiAuthorizationRequest,
@@ -126,36 +120,8 @@ export function createUsageStatsService(
       regularTpsInFlight.set(key, requestPromise);
       return requestPromise;
     },
-    async getCodingPlanResetStatus(
-      request: CodingPlanResetScopeRequest,
-    ): Promise<CodingPlanResetStatusSnapshot> {
-      if (!isCodingPlanProviderId(request.preferredProviderId)) {
-        throw new Error("no_bigmodel_api_key");
-      }
-      return quotaProvider.getCodingPlanResetStatus(request);
-    },
-    async requestCodingPlanResetOpportunity(
-      request: CodingPlanResetOpportunityRequest,
-    ): Promise<CodingPlanResetOpportunityResult> {
-      if (!isCodingPlanProviderId(request.preferredProviderId)) {
-        throw new Error("no_bigmodel_api_key");
-      }
-      return quotaProvider.requestCodingPlanResetOpportunity(request);
-    },
-    async useCodingPlanReset(
-      request: CodingPlanResetUseRequest,
-    ): Promise<CodingPlanResetUseResult> {
-      if (!isCodingPlanProviderId(request.preferredProviderId)) {
-        throw new Error("no_bigmodel_api_key");
-      }
-      return quotaProvider.useCodingPlanReset(request);
-    },
-    async markCodingPlanResetHistoryRead(request: CodingPlanResetScopeRequest): Promise<void> {
-      if (!isCodingPlanProviderId(request.preferredProviderId)) {
-        throw new Error("no_bigmodel_api_key");
-      }
-      await quotaProvider.markCodingPlanResetHistoryRead(request);
-    },
+    // 重置专用请求退役；保留真实用量/资格读取。
+    ...createRetiredCodingPlanResetMethods(),
     async getSnapshot(request: UsageStatsRequest): Promise<UsageStatsSnapshot> {
       // App Usage 已迁移到 getAppUsageSnapshot（agent 数据库）。getSnapshot 仅服务 Coding Plan monitor 链路。
       // 任何 monitor 失败都不能回退本地数据，保持数据源隔离。

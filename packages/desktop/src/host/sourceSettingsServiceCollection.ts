@@ -3,6 +3,8 @@ import {
   ICredentialService,
   IOAuthService,
   ICodingPlanSubscriptionService,
+  IRuntimeConfigService,
+  IAccountModelProjectsService,
   ISettingService,
   ISystemService,
   ISourceServerWorkspaceService,
@@ -51,6 +53,14 @@ export function createSourceSettingsServiceCollection(
     .register(
       ICodingPlanSubscriptionService,
       read(ICodingPlanSubscriptionService, (accessor) => accessor.codingPlanSubscriptionService),
+    )
+    .register(
+      IRuntimeConfigService,
+      read(IRuntimeConfigService, (accessor) => accessor.runtimeConfigService),
+    )
+    .register(
+      IAccountModelProjectsService,
+      read(IAccountModelProjectsService, (accessor) => accessor.accountModelProjectsService),
     )
     .register(
       ISettingService,

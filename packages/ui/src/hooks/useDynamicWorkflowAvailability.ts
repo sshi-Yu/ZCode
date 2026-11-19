@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import type { ICodingPlanSubscriptionService, IZCodeAgentService } from "@zcode/services";
+import type { IRuntimeConfigService, IZCodeAgentService } from "@zcode/services";
 import type { DynamicWorkflowMode } from "@zcode/shared";
 import { logger } from "@/logger.js";
 import {
@@ -24,9 +24,7 @@ export function useDynamicWorkflowAvailability(): DynamicWorkflowAvailabilitySna
  * app 会话级取数，挂在 Root 里一次。service 换了（手机 `/remote` 完成工作区桥接）会重试，
  * 取数与失败重试的规则见 dynamicWorkflowAvailabilityStore。
  */
-export function useDynamicWorkflowAvailabilityLoader(
-  service: ICodingPlanSubscriptionService,
-): void {
+export function useDynamicWorkflowAvailabilityLoader(service: IRuntimeConfigService): void {
   const ensureLoaded = useDynamicWorkflowAvailabilityStore((state) => state.ensureLoaded);
   useEffect(() => {
     void ensureLoaded(service);
@@ -46,9 +44,9 @@ export function useDynamicWorkflowUserModeSync(params: {
   settingsLoaded: boolean;
   userMode: DynamicWorkflowMode | undefined;
   zcodeAgentService: Pick<IZCodeAgentService, "syncDynamicWorkflowUserMode">;
-  codingPlanSubscriptionService: ICodingPlanSubscriptionService;
+  runtimeConfigService: IRuntimeConfigService;
 }): void {
-  const { settingsLoaded, userMode, zcodeAgentService, codingPlanSubscriptionService } = params;
+  const { settingsLoaded, userMode, zcodeAgentService, runtimeConfigService } = params;
   const reload = useDynamicWorkflowAvailabilityStore((state) => state.reload);
   const observedRef = useRef<{ userMode: DynamicWorkflowMode | undefined } | null>(null);
   const chainRef = useRef<Promise<void>>(Promise.resolve());
@@ -65,7 +63,7 @@ export function useDynamicWorkflowUserModeSync(params: {
           error: error instanceof Error ? error.message : String(error),
         });
       }
-      await reload(codingPlanSubscriptionService);
+      await reload(runtimeConfigService);
     });
-  }, [codingPlanSubscriptionService, reload, settingsLoaded, userMode, zcodeAgentService]);
+  }, [runtimeConfigService, reload, settingsLoaded, userMode, zcodeAgentService]);
 }

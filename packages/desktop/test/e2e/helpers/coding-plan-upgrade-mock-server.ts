@@ -62,16 +62,9 @@ export function resolveCodingPlanUpgradeMockScenario(
   if (specs.some((spec) => spec.includes("marketing-touch-"))) {
     return "manual-claim-experience";
   }
-  if (specs.some((spec) => spec.includes("coding-plan-upgrade-personal-system-busy"))) {
-    return "personal-system-busy";
-  }
-  if (specs.some((spec) => spec.includes("coding-plan-upgrade-personal-sold-out"))) {
-    return "personal-sold-out";
-  }
   if (
     specs.some(
       (spec) =>
-        spec.includes("coding-plan-upgrade-webview-refresh-provider") ||
         spec.includes("account-key-usage-scene") ||
         spec.includes("highspeed-owner-ui-race.test.ts"),
     )
@@ -391,6 +384,16 @@ async function handleRequest(
     // Bug 原因：下一时段只重置 completed 会让失败用例的一次性开关泄漏到后续成功用例。
     state.manualClaimCompleted = false;
     state.manualClaimShouldFail = false;
+    sendJson(response, { ok: true });
+    return;
+  }
+
+  if (
+    request.method === "POST" &&
+    url.pathname === "/__e2e/coding-plan/seed-existing-entitlement" &&
+    state.scenario === "manual-claim-experience"
+  ) {
+    state.manualClaimCompleted = true;
     sendJson(response, { ok: true });
     return;
   }

@@ -758,6 +758,9 @@ export class OffPeakTaskRepo {
    * running 置回 queued（保留 queued_at，天然仍在队首附近；保留 session_id 供 resume
    * 续跑），并清理超时认领。返回回收的任务数。
    * ⚠ 调用方必须保证调用时无在跑 off-peak loop（属主应为 app 单例进程，非每个 host）。
+   *
+   * 2026-11-19 商业服务拆除 C 阶段：本方法不再被 scheduler 调用——退役后重启不得把旧
+   * running 行重放回 queued。方法保留供回滚（恢复调用点即恢复旧行为），不改写状态机。
    */
   async recoverInterrupted(now: number): Promise<number> {
     await this.ensureReady();

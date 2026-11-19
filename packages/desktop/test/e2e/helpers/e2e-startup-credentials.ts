@@ -16,23 +16,13 @@ export function createE2EStartupCredentialSeed(
   const requiresZCodeJwt = options.specs?.some((spec) => {
     const fileName = spec.replaceAll("\\", "/").split("/").at(-1);
     return (
-      // 营销投放 spec 按主题拆成 marketing-touch-delivery*.test.ts，领取用例都需要本地 JWT。
-      fileName?.startsWith("marketing-touch-delivery") ||
       fileName === "conversation-session-share-popover.test.ts" ||
       fileName === "marketing-touch-entitlement.test.ts" ||
-      // Rewards 专项走本地控制面，需要同时验证 OAuth 与 JWT 注入。
-      fileName === "marketing-touch-rewards.test.ts" ||
       fileName === "jwt-401-auto-logout.test.ts" ||
       // 语音输入只对已登录用户显示，ticket 请求带 zcodejwttoken。
       fileName === "composer-voice-input.test.ts" ||
       isRequestSecuritySpec(fileName) ||
-      fileName === "coding-plan-upgrade-webview-refresh-provider.test.ts" ||
-      fileName === "start-plan-manual-claim-experience.test.ts" ||
-      fileName === "provider-family-responsive.test.ts" ||
-      fileName === "conversation-session-offpeak-subagent-model-inheritance.test.ts" ||
-      // Team 回归只替代 HTTP，仍走真实凭据解析；缺少 JWT 会在创建前被拒绝。
-      fileName === "conversation-session-off-peak-team-plan.test.ts" ||
-      fileName === "conversation-session-off-peak-invalid-ticket.test.ts"
+      fileName === "provider-family-responsive.test.ts"
     );
   });
   // Bug 原因：默认假 OAuth 即使没有 JWT，仍会访问真实账号控制面并触发过期弹窗。

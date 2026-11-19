@@ -48,6 +48,7 @@ export const USAGE_ENTITLEMENT_REFRESH_TIMEOUT_MS = 20_000;
 export interface UsageEntitlementRefreshOptions {
   silent?: boolean;
   force?: boolean;
+  invalidateBalanceCache?: boolean;
   reason?: UsageEntitlementRefreshReason;
 }
 
@@ -283,10 +284,12 @@ export function useUsageEntitlementWithService(
         return;
       }
 
+      // 用户主动校正已有权益时，同时绕过 Renderer 共享请求和 Host 的余额缓存。
+      const invalidateBalanceCache = refreshOptions.invalidateBalanceCache === true;
       const sharedRequest = beginSharedEntitlementRequest({
         usageStatsService,
         freshnessKey,
-        invalidate: reason === "purchase",
+        invalidate: invalidateBalanceCache,
       });
       const requestVersion = requestVersionRef.current + 1;
       requestVersionRef.current = requestVersion;
@@ -317,10 +320,9 @@ export function useUsageEntitlementWithService(
         const snapshot = await getSharedEntitlementSnapshot({
           usageStatsService,
           requestKey: sharedRequest.requestKey,
-          options:
-            reason === "purchase"
-              ? { ...requestOptions, invalidateBalanceCache: true }
-              : requestOptions,
+          options: invalidateBalanceCache
+            ? { ...requestOptions, invalidateBalanceCache: true }
+            : requestOptions,
         });
         if (
           currentRequestScope.current !== requestScope ||

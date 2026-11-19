@@ -23,37 +23,22 @@ import {
   waitForTestIdByDom,
 } from "#e2e/helpers/desktop-app";
 
-describe("Marketing Touch 领取后的权益与模型连接", () => {
+describe("已有权益与模型连接", () => {
   after(async () => {
     await browser.electron.restoreAllMocks();
     await clearAppData();
   });
-  it("MTC-06 / BSM-20：领取后的权益刷新与连接切换互不覆盖", async function () {
+  it("BSM-20：已有权益刷新与连接切换互不覆盖", async function () {
     this.timeout(120_000);
-    // 通过隔离服务 fixture 准备已领取状态；真实 Banner/安全校验/上报链路由 delivery 用例覆盖。
     const base = process.env[MANUAL_CLAIM_MOCK_BASE_URL_ENV];
-    if (!base) throw new Error("Missing isolated marketing fixture");
-    // 多个 spec 共用 HTTP 服务；显式重建本例的独立弹窗，不能依赖前例残留。
-    await fetch(base + "/__e2e/marketing/reset", {
-      method: "POST",
-      body: JSON.stringify({ popup: true }),
-    });
-    await fetch(base + "/__e2e/marketing/release", { method: "POST" });
-    await fetch(base + "/api/v1/zcode-plan/billing/claim", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ plan_id: "weekend-plan-e2e" }),
-    });
-    // 复现升级用户：旧 Start 连接保持可读，领取和浏览不能自动改写为付费套餐。
+    if (!base) throw new Error("Missing isolated entitlement fixture");
+    const seed = await fetch(`${base}/__e2e/coding-plan/seed-existing-entitlement`, { method: "POST" });
+    if (!seed.ok) throw new Error(`Could not seed existing entitlement: ${seed.status}`);
     await seedSettings({
       providerFamilyConnectionSelections: { bigmodel: { kind: "start-plan" } },
     });
     await browser.reloadSession();
     await waitForDefaultWorkspaceReady();
-    const popup = $('[data-testid="cloud-content-dialog"]');
-    await popup.waitForDisplayed({ timeout: 40_000 });
-    await $('[data-testid="cloud-dialog-action"]').click();
-    await popup.waitForExist({ reverse: true });
     await openModelProviderSettings();
     await selectBigModelStartPlan();
     expect((await readSettings()).providerFamilyConnectionSelections?.bigmodel).toEqual({
@@ -79,6 +64,7 @@ describe("Marketing Touch 领取后的权益与模型连接", () => {
         timeoutMsg: "点击刷新权益后没有重新请求 billing/balance",
       },
     );
+    expect((await readMockRequests()).some(({ path }) => path.endsWith("/billing/claim"))).toBe(false);
     await openSubagentSettings();
     await waitForBigModelConnectionBadge("Start");
     await selectSubagentModel(START_PLAN_MODEL);
@@ -162,7 +148,7 @@ async function selectBigModelIndividualPlan() {
     "individual-coding-plan"
   )
     return;
-  await selectBigModelPlan(INDIVIDUAL_PLAN_KEY, "领取 Start Plan 后没有 Individual 连接方式选项");
+  await selectBigModelPlan(INDIVIDUAL_PLAN_KEY, "已有 Start Plan 时缺少 Individual 连接方式选项");
 }
 
 async function selectBigModelStartPlan() {

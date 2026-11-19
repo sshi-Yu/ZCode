@@ -1,4 +1,3 @@
-import { CodingPlanEntryButton } from "@/settings/CodingPlanEntryButton.js";
 /* eslint-disable max-lines -- Coding Plan/Start Plan 状态卡集中编排状态、动作和套餐区块，当前先保持同一文件避免拆散状态语义。 */
 import {
   BIGMODEL_PROVIDER_ID,
@@ -6,34 +5,14 @@ import {
   resolveModelProviderFamilySpecByProviderId,
   type UsageEntitlementSubscriptionDetail,
   type UsageQuotaLimit,
-  type ZCodeAccountAccess,
-  type ZCodeProviderAccountAccess,
 } from "@zcode/shared";
 import { InfoIcon, LoaderCircle } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button.js";
 import { ControlHintTooltip } from "@/ControlHintTooltip.js";
 import { logger } from "@/logger.js";
-import { LocalizedCodingPlanQuotaResetAction } from "@/components/coding-plan-quota-reset/CodingPlanQuotaResetAction.js";
-import { CodingPlanQuotaResetOpportunity } from "@/components/coding-plan-quota-reset/CodingPlanQuotaResetOpportunity.js";
-import { buildCodingPlanQuotaResetDialogConfig } from "@/components/coding-plan-quota-reset/buildCodingPlanQuotaResetDialogConfig.js";
-import {
-  CodingPlanBillingDiscountBadge,
-  useCodingPlanBillingDiscount,
-} from "@/CodingPlanBillingDiscount.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { useCodingPlanQuotaResetUi } from "@/hooks/useCodingPlanQuotaResetUi.js";
 import { formatQuotaResetTime, isSameLimitCategory } from "@/lib/codingPlanQuotaPresentation.js";
-import {
-  mergeCodingPlanQuotaResetOpportunityBadges,
-  resolveCodingPlanQuotaResetActionCompletedAt,
-  resolveCodingPlanQuotaResetLimit,
-} from "@/lib/codingPlanQuotaResetUi.js";
-import {
-  createCodingPlanFunnelContext,
-  resolveCodingPlanEntryPlanState,
-  type CodingPlanFunnelContext,
-} from "@/lib/codingPlanFunnelTelemetry.js";
 import {
   type CodingPlanStatus,
   type CodingPlanProviderId,
@@ -41,13 +20,10 @@ import {
 } from "./constants.js";
 import type { CodingPlanStatusPanelViewState } from "./codingPlanStatusPanelViewState.js";
 import { CodingPlanStatusMeta, StartPlanStatusMeta } from "./CodingPlanStatusMeta.js";
-import { CodingPlanStatusActions, CodingPlanUpgradeAction } from "./CodingPlanStatusActions.js";
+import { CodingPlanStatusActions } from "./CodingPlanStatusActions.js";
 import type { CodingPlanLoginOptions } from "./codingPlanPricingCards.js";
-import type { PurchaseAudience } from "./codingPlanEnterpriseTiers.js";
-import { StartPlanCard } from "./StartPlanCard.js";
 import { StartPlanQuotaStatusCard } from "./StartPlanQuotaStatusCard.js";
 import { resolveStartPlanQuotaCardEntries } from "./StartPlanBalanceCard.js";
-import { useStartPlanPreview } from "./useStartPlanPreview.js";
 import {
   BigModelRegistrationHint,
   isBigModelUnregisteredAuthError,
@@ -63,13 +39,11 @@ const CODING_PLAN_USAGE_SUMMARY_COLORS = [
 
 function PlanStatusCardSurface({
   planTitle,
-  titleAccessory,
   statusMeta,
   trailingAction,
   usageContent,
 }: {
   planTitle: string;
-  titleAccessory?: ReactNode;
   statusMeta: ReactNode;
   trailingAction?: ReactNode;
   usageContent?: ReactNode;
@@ -82,7 +56,6 @@ function PlanStatusCardSurface({
             <h3 className="min-w-0 truncate text-ui-lg font-semibold leading-5 text-foreground">
               {planTitle}
             </h3>
-            {titleAccessory}
           </div>
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             {statusMeta}
@@ -141,7 +114,6 @@ export function CodingPlanStatusPanel({
   viewState,
   loginLoading,
   disconnectLoading,
-  purchaseUrl,
   planLevel,
   inactivePlanTitle,
   subscriptionRenewTime,
@@ -154,23 +126,14 @@ export function CodingPlanStatusPanel({
   onLogin,
   onRetry,
   reloginOnFailure = false,
-  onOpenPurchase,
   onDisconnect,
-  onOpenUpgradePlans,
-  purchaseInitialAudience = "personal",
   loginActionPlacement = "inline",
   loginActionVisible = false,
   usageDetailsVisible = true,
-  upgradeActionVisible = true,
-  upgradePlansVisible: controlledUpgradePlansVisible,
-  onUpgradePlansVisibleChange,
-  startPlanPreviewVisible = true,
   statusLabelId,
   statusMessage,
   teamPlanAvailabilityReason,
-  quotaResetSourceKey,
-  quotaResetAccountAccess,
-  onQuotaResetEntitlementRefresh,
+  onRefreshStartPlanEntitlement,
 }: {
   providerId: CodingPlanProviderId;
   providerName: string;
@@ -178,7 +141,6 @@ export function CodingPlanStatusPanel({
   viewState?: CodingPlanStatusPanelViewState;
   loginLoading?: boolean;
   disconnectLoading?: boolean;
-  purchaseUrl?: string;
   planLevel?: string | null;
   inactivePlanTitle?: string | null;
   subscriptionRenewTime?: string | null;
@@ -194,42 +156,24 @@ export function CodingPlanStatusPanel({
   reloginOnFailure?: boolean;
   /** Start 套餐获取失败沿用 Host 手动刷新，不强制重新登录。 */
   onRetry?: () => void;
-  onOpenPurchase?: (url: string) => void;
   onDisconnect?: () => void;
-  onOpenUpgradePlans?: (options: {
-    initialAudience: PurchaseAudience;
-    funnelContext: CodingPlanFunnelContext | null;
-  }) => void;
-  /** 原生面板移除后，Team 状态卡仍须把购买对象传给统一升级入口。 */
-  purchaseInitialAudience?: PurchaseAudience;
   loginActionPlacement?: "inline" | "trailing";
   loginActionVisible?: boolean;
   usageDetailsVisible?: boolean;
-  upgradeActionVisible?: boolean;
-  upgradePlansVisible?: boolean;
-  onUpgradePlansVisibleChange?: (visible: boolean) => void;
-  startPlanPreviewVisible?: boolean;
   statusLabelId?: string;
   statusMessage?: string | null;
   teamPlanAvailabilityReason?: TeamPlanAvailabilityReason;
-  /** Team Plan 必须传完整连接 key，避免与同 provider 的个人套餐共享重置状态。 */
-  quotaResetSourceKey?: string;
-  quotaResetAccountAccess?: ZCodeProviderAccountAccess | ZCodeAccountAccess;
-  onQuotaResetEntitlementRefresh?: () => void | Promise<void>;
+  onRefreshStartPlanEntitlement?: () => void | Promise<void>;
 }) {
   const { intl } = useZCodeIntl();
-  const billingDiscount = useCodingPlanBillingDiscount();
-  const [internalUpgradePlansVisible, setInternalUpgradePlansVisible] = useState(false);
   const [startPlanEntitlementRefreshing, setStartPlanEntitlementRefreshing] = useState(false);
-  const upgradePlansVisible = controlledUpgradePlansVisible ?? internalUpgradePlansVisible;
-  const setUpgradePlansVisible = onUpgradePlansVisibleChange ?? setInternalUpgradePlansVisible;
   const refreshStartPlanEntitlement = async () => {
-    if (!onQuotaResetEntitlementRefresh || startPlanEntitlementRefreshing) {
+    if (!onRefreshStartPlanEntitlement || startPlanEntitlementRefreshing) {
       return;
     }
     setStartPlanEntitlementRefreshing(true);
     try {
-      await onQuotaResetEntitlementRefresh();
+      await onRefreshStartPlanEntitlement();
     } catch (error) {
       // 额度桶可能在生效时间后仍短暂未就绪。刷新失败时必须保留按钮供重试，
       // 不能因为一次网络错误把“尚未同步”错误收敛成已完成。
@@ -312,117 +256,13 @@ export function CodingPlanStatusPanel({
     Boolean(onLogin);
   const rawPlanLevel = planLevel?.trim() ?? "";
   const normalizedPlanLevel = rawPlanLevel.toUpperCase();
-  const isMaxPlanLevel = isMaxCodingPlanLevel(rawPlanLevel);
   const displayPlanLevel = /^GLM[\s_-]+CODING\b/i.test(rawPlanLevel)
     ? formatQuotaModelDisplayName(rawPlanLevel)
     : normalizedPlanLevel;
-  const canUpgrade =
-    // Max 已是最高档但仍需要续期入口，不能因为不可升级就隐藏按钮。
-    upgradeActionVisible && isPurchased && !isChecking && !isUnsupported;
-  const canManageCodingPlan =
-    !isDisconnected &&
-    !isChecking &&
-    !isUnsupported &&
-    isPurchased &&
-    Boolean(purchaseUrl) &&
-    Boolean(onOpenPurchase);
-  const disconnectedStartPlanPricingVisible =
-    isStartPlanProvider && (isDisconnected || isNotPurchased);
-  const startPlanCardVisible =
-    startPlanPreviewVisible && disconnectedStartPlanPricingVisible && !upgradePlansVisible;
-  const startPlanPreview = useStartPlanPreview({
-    enabled: startPlanCardVisible,
-  });
   const shouldShowBigModelRegistrationHint =
     isChecking &&
     providerIcon === BIGMODEL_PROVIDER_ID &&
     isBigModelUnregisteredAuthError(authError);
-  const createSettingPlanCardFunnelContext = (eventText: string) =>
-    createCodingPlanFunnelContext({
-      providerId,
-      // 修复原因：Start Plan 的升级入口与普通 Coding Plan 套餐卡属于不同链接方式，
-      // 埋点必须单独标识，避免把 Start Plan 用户误归类为普通套餐卡来源。
-      upgradeSource: isStartPlanProvider ? "setting_start_plan_card" : "setting_plan_card",
-      eventRegion: "app.setting",
-      eventText,
-      entryPlanState: resolveCodingPlanEntryPlanState({
-        displayStatus: effectiveViewState.displayStatus,
-        providerId,
-        planLevel,
-      }),
-    });
-  const openUpgradePlans = (
-    initialAudience: PurchaseAudience,
-    nextFunnelContext: CodingPlanFunnelContext | null,
-  ) => {
-    if (onOpenUpgradePlans) {
-      // Coding Plan 购买流程不应继续挂载在 Model Settings 内部；
-      // 状态卡只负责发起意图，由弹窗 hook 承载购买面板。
-      onOpenUpgradePlans({
-        initialAudience,
-        funnelContext: nextFunnelContext,
-      });
-      return;
-    }
-    setUpgradePlansVisible(true);
-  };
-  const upgradeAction = canUpgrade ? (
-    <CodingPlanUpgradeAction
-      loginLoading={effectiveViewState.loginLoading}
-      upgradePlansVisible={upgradePlansVisible}
-      actionLabelId={
-        isMaxPlanLevel
-          ? "settings.modelProvider.codingPlan.renew"
-          : "settings.modelProvider.codingPlan.upgrade"
-      }
-      billingDiscountActive={isStartPlanProvider && billingDiscount.active}
-      billingDiscountConfig={billingDiscount.config}
-      onUpgradePlansVisibleChange={(visible) => {
-        if (visible) {
-          openUpgradePlans(
-            purchaseInitialAudience,
-            createSettingPlanCardFunnelContext(
-              intl.formatMessage({
-                id: isMaxPlanLevel
-                  ? "settings.modelProvider.codingPlan.renew"
-                  : "settings.modelProvider.codingPlan.upgrade",
-              }),
-            ),
-          );
-          return;
-        }
-        setUpgradePlansVisible(visible);
-      }}
-    />
-  ) : null;
-  const buyAction =
-    !isStartPlanProvider && !canUpgrade && isNotPurchased && !isChecking && !isUnsupported ? (
-      <CodingPlanEntryButton
-        type="button"
-        size="lg"
-        // 未购买状态也可能正在等待权益接口返回；此时必须和 Upgrade
-        // 按钮一样禁用，避免旧的 notPurchased 快照被提前提交为购买入口。
-        disabled={effectiveViewState.loginLoading}
-        onClick={() => {
-          openUpgradePlans(
-            purchaseInitialAudience,
-            createSettingPlanCardFunnelContext(
-              intl.formatMessage({
-                id: "settings.modelProvider.codingPlan.subscribe",
-              }),
-            ),
-          );
-        }}
-      >
-        {/* 单卡同步可能晚于全局套餐查询；仅禁用会丢失等待反馈，和 Upgrade 保持一致。 */}
-        {effectiveViewState.loginLoading ? (
-          <LoaderCircle className="size-3.5 animate-spin" />
-        ) : null}
-        {intl.formatMessage({
-          id: "settings.modelProvider.codingPlan.subscribe",
-        })}
-      </CodingPlanEntryButton>
-    ) : null;
   const inlineDisconnectVisible = canDisconnectProvider && !isPurchased;
   const planTitle = resolveCodingPlanStatusCardTitle({
     isPurchased,
@@ -438,7 +278,6 @@ export function CodingPlanStatusPanel({
       id: "settings.modelProvider.planCard.codingPlan",
     }),
   });
-  const titleBillingDiscountVisible = !isStartPlanProvider && billingDiscount.active;
   const notPurchasedStatusLabel = isNotPurchased ? (
     <span className="flex w-fit items-center gap-1.5 text-foreground-subtle">
       <InfoIcon className="size-3 shrink-0" aria-hidden="true" />
@@ -452,7 +291,7 @@ export function CodingPlanStatusPanel({
   const statusMeta =
     isPurchased && isStartPlanProvider ? (
       // 产品语义:体验套餐用量卡片不展示「管理」「解绑」操作(免费套餐无管理页,
-      // 登录态由 family 级连接方式管理),仅保留过期时间与右侧升级 Coding Plan 入口。
+      // 登录态由 family 级连接方式管理),仅保留过期时间与余额查询。
       <StartPlanStatusMeta
         expireTime={subscriptionExpireTime}
         entitlements={subscriptionDetails?.[0]?.entitlements}
@@ -467,13 +306,6 @@ export function CodingPlanStatusPanel({
       <CodingPlanStatusMeta
         renewTime={subscriptionRenewTime}
         expireTime={subscriptionExpireTime}
-        manageLabel={
-          canManageCodingPlan
-            ? intl.formatMessage({
-                id: "settings.modelProvider.codingPlan.manage",
-              })
-            : null
-        }
         unlinkLabel={
           canDisconnectProvider
             ? intl.formatMessage({
@@ -482,11 +314,6 @@ export function CodingPlanStatusPanel({
             : null
         }
         unlinkLoading={disconnectLoading}
-        onManage={
-          canManageCodingPlan && purchaseUrl && onOpenPurchase
-            ? () => onOpenPurchase(purchaseUrl)
-            : undefined
-        }
         onUnlink={canDisconnectProvider ? onDisconnect : undefined}
       />
     ) : shouldShowBigModelRegistrationHint ? (
@@ -543,12 +370,6 @@ export function CodingPlanStatusPanel({
       {effectiveViewState.loginLoading ? <LoaderCircle className="size-3.5 animate-spin" /> : null}
       {intl.formatMessage({ id: loginButtonId }, { provider: providerName })}
     </Button>
-  ) : upgradeAction ? (
-    // 升级是 Plan Card 的主操作，和连接入口同属卡片级 action。
-    // 放在标题旁会随标题换行抖动；放到右侧并使用同尺寸按钮，层级和位置都更稳定。
-    upgradeAction
-  ) : buyAction ? (
-    buyAction
   ) : null;
   const statusContent = (
     <>
@@ -611,11 +432,6 @@ export function CodingPlanStatusPanel({
           <PlanStatusCardSurface
             key="current-plan"
             planTitle={planTitle}
-            titleAccessory={
-              titleBillingDiscountVisible ? (
-                <CodingPlanBillingDiscountBadge config={billingDiscount.config} size="compact" />
-              ) : undefined
-            }
             statusMeta={statusContent}
             trailingAction={trailingAction}
             usageContent={
@@ -634,29 +450,14 @@ export function CodingPlanStatusPanel({
                     />
                   ) : undefined
                 ) : (
-                  <CodingPlanUsageSummaryCards
-                    limits={quotaLimits}
-                    mcpQuotaLimit={mcpQuotaLimit}
-                    sourceKey={quotaResetSourceKey ?? providerId}
-                    preferredProviderId={providerId}
-                    accountAccess={quotaResetAccountAccess}
-                    onEntitlementRefresh={onQuotaResetEntitlementRefresh}
-                  />
+                  <CodingPlanUsageSummaryCards limits={quotaLimits} mcpQuotaLimit={mcpQuotaLimit} />
                 )
               ) : undefined
             }
           />,
         ];
 
-  return (
-    <div className="space-y-3">
-      {planCards}
-
-      {startPlanCardVisible && !startPlanPreview.loading && startPlanPreview.preview ? (
-        <StartPlanCard preview={startPlanPreview.preview} />
-      ) : null}
-    </div>
-  );
+  return <div className="space-y-3">{planCards}</div>;
 }
 
 export function hasStartPlanEntitlementQuota(
@@ -676,7 +477,6 @@ export function hasStartPlanEntitlementQuota(
 
 export function resolveCodingPlanStatusCardTitle({
   isPurchased,
-  isUnavailable = false,
   isStartPlanProvider,
   inactivePlanTitle,
   rawPlanLevel,
@@ -715,41 +515,16 @@ function isStartPlanEntitlementName(planLevel: string): boolean {
   );
 }
 
-function isMaxCodingPlanLevel(planLevel: string): boolean {
-  return /(^|[\s_-])MAX($|[\s_-])/i.test(planLevel);
-}
-
 function CodingPlanUsageSummaryCards({
   limits,
   mcpQuotaLimit,
-  sourceKey,
-  preferredProviderId,
-  accountAccess,
-  onEntitlementRefresh,
 }: {
   limits: UsageQuotaLimit[];
   mcpQuotaLimit: UsageQuotaLimit | null;
-  sourceKey: string;
-  preferredProviderId: string;
-  accountAccess?: ZCodeProviderAccountAccess | ZCodeAccountAccess;
-  onEntitlementRefresh?: () => void | Promise<void>;
 }) {
-  const { intl, locale } = useZCodeIntl();
-  const [quotaResetDialogOpen, setQuotaResetDialogOpen] = useState(false);
-  const resetUi = useCodingPlanQuotaResetUi({
-    sourceKey,
-    preferredProviderId,
-    accountAccess,
-    onEntitlementRefresh,
-  });
-  const fiveHourLimit = resolveCodingPlanQuotaResetLimit(
-    findUsageLimit(limits, "TOKENS_LIMIT", 3, 5),
-    resetUi.entry,
-  );
-  const weeklyLimit = resolveCodingPlanQuotaResetLimit(
-    findUsageLimit(limits, "TOKENS_LIMIT", 6),
-    resetUi.week.entry,
-  );
+  const { intl } = useZCodeIntl();
+  const fiveHourLimit = findUsageLimit(limits, "TOKENS_LIMIT", 3, 5);
+  const weeklyLimit = findUsageLimit(limits, "TOKENS_LIMIT", 6);
   const standardCards = [
     createCodingPlanUsageSummaryCard({
       key: "fiveHour",
@@ -805,95 +580,17 @@ function CodingPlanUsageSummaryCards({
             resetTimeFormat: "date" as const,
           }));
 
-  const fiveHourCardVisible = cards.some((card) => card.key === "fiveHour");
-  const weeklyCardVisible = cards.some((card) => card.key === "weekly");
-  // 五小时与周机会合并为一个徽标,次数累加,倒计时取最早到期的一档。
-  // Bugfix：曾用「剩余 100% 则重置无收益」隐藏徽标与按钮。核销会把剩余改写成 100%，
-  // 同类型余下的机会随即被藏掉，用户以为卡丢了。只要额度卡在且有可用机会就展示。
-  const opportunityBadge = mergeCodingPlanQuotaResetOpportunityBadges([
-    {
-      count: resetUi.entry?.opportunityCount ?? 0,
-      expiresAt: resetUi.entry?.opportunityExpiresAt ?? null,
-      visible: fiveHourCardVisible && resetUi.opportunityVisible,
-    },
-    {
-      count: resetUi.week.entry?.opportunityCount ?? 0,
-      expiresAt: resetUi.week.entry?.opportunityExpiresAt ?? null,
-      visible: weeklyCardVisible && resetUi.week.opportunityVisible,
-    },
-  ]);
-  const quotaResetDialog = buildCodingPlanQuotaResetDialogConfig({
-    fiveHourEnabled: Boolean(fiveHourLimit),
-    resetUi,
-    usageItems: cards.map((card) => {
-      const percentage = resolveLimitRemainingPercentage(card.limit);
-      return {
-        color: card.progressColor,
-        id: card.key,
-        label: card.label,
-        percentage,
-        resetTime: formatQuotaResetTime({
-          locale,
-          value: card.limit.nextResetTime,
-          format: card.resetTimeFormat,
-          compactToday: card.resetTimeFormat === "dateTime",
-        }),
-        value: formatRemainingPercentage(locale, percentage),
-      };
-    }),
-    weekEnabled: Boolean(weeklyLimit),
-  });
-
   return (
     <div className="space-y-2">
       <div className="flex min-w-0 flex-wrap items-center gap-1">
         <h4 className="text-ui-base font-medium text-foreground">
           {intl.formatMessage({ id: "settings.usage.quotaTitle" })}
         </h4>
-        {(fiveHourCardVisible && resetUi.entry) || (weeklyCardVisible && resetUi.week.entry) ? (
-          <CodingPlanQuotaResetOpportunity
-            count={opportunityBadge.count}
-            dialog={quotaResetDialog}
-            dialogOpen={quotaResetDialogOpen}
-            expiresAt={opportunityBadge.expiresAt}
-            placement="inline"
-            visible={opportunityBadge.visible}
-            onDialogOpenChange={setQuotaResetDialogOpen}
-          />
-        ) : null}
       </div>
       <div className="flex w-full gap-2 max-sm:flex-col">
         {cards.map((card) => (
           <PlanUsageMetricCard
             key={card.key}
-            action={
-              // 额度标题旁入口只打开统一弹窗；真正核销由弹窗内对应类型按钮触发。
-              // Bugfix：这里曾额外要求 opportunityBadge.count <= 1，多张机会时反而把
-              // 卡上的重置入口藏掉（Usage 页已修，此处遗漏）。与 Usage 页口径对齐：
-              // 有可用机会就展示，不因满额或多张隐藏。
-              card.key === "fiveHour" &&
-              resetUi.entry &&
-              (resetUi.opportunityVisible ||
-                resetUi.processing ||
-                resetUi.entry.status === "completed") ? (
-                <LocalizedCodingPlanQuotaResetAction
-                  completedAt={resolveCodingPlanQuotaResetActionCompletedAt(resetUi)}
-                  processing={resetUi.processing}
-                  onOpenDialog={() => setQuotaResetDialogOpen(true)}
-                />
-              ) : card.key === "weekly" &&
-                resetUi.week.entry &&
-                (resetUi.week.opportunityVisible ||
-                  resetUi.week.processing ||
-                  resetUi.week.entry.status === "completed") ? (
-                <LocalizedCodingPlanQuotaResetAction
-                  completedAt={resolveCodingPlanQuotaResetActionCompletedAt(resetUi.week)}
-                  processing={resetUi.week.processing}
-                  resetType="WEEK"
-                  onOpenDialog={() => setQuotaResetDialogOpen(true)}
-                />
-              ) : undefined
-            }
             label={card.label}
             limit={card.limit}
             infoDescription={
@@ -976,14 +673,12 @@ function resolveGenericUsageLimitLabel(
 }
 
 function PlanUsageMetricCard({
-  action,
   infoDescription,
   label,
   limit,
   progressColor,
   resetTimeFormat,
 }: {
-  action?: ReactNode;
   infoDescription?: string;
   label?: string;
   limit?: UsageQuotaLimit;
@@ -1019,7 +714,6 @@ function PlanUsageMetricCard({
               </button>
             </ControlHintTooltip>
           ) : null}
-          {action ? <span className="shrink-0">{action}</span> : null}
         </div>
       ) : null}
       {modelLabel ? (

@@ -9,23 +9,9 @@ import {
   clearCodingPlanTeamMockEnv,
   clearCodingPlanUpgradeMockEnv,
   shouldPrepareCodingPlanTeamMock,
-  isOffPeakTeamPlanSpec,
 } from "./e2e/helpers/coding-plan-mock-env.js";
 
 describe("Coding Plan E2E mock env", () => {
-  it.each(["", "manual-review/pending/"])(
-    "Team 闲时身份回归在 %s 路径启用确定性请求记录场景",
-    (directory) => {
-      expect(
-        isOffPeakTeamPlanSpec([
-          `./test/e2e/conversation-session/${directory}conversation-session-off-peak-team-plan.test.ts`,
-        ]),
-      ).toBe(true);
-      expect(
-        isOffPeakTeamPlanSpec(["./test/e2e/automations/off-peak/off-peak-create-manage.test.ts"]),
-      ).toBe(false);
-    },
-  );
   it.each(["", "manual-review/pending/"])(
     "分享发布用例在 %s 路径提供登录态和本地分享 API",
     (directory) => {
@@ -46,12 +32,6 @@ describe("Coding Plan E2E mock env", () => {
       }),
     ).toBe(false);
   });
-  it.each(["off-peak-automations-home-layout.test.ts", "off-peak-limit-pre-gate.test.ts"])(
-    "prepares account model facts for off-peak UI %s",
-    (spec) => {
-      expect(shouldPrepareCodingPlanTeamMock([`./test/e2e/${spec}`])).toBe(true);
-    },
-  );
   it.each([
     "settings/general/settings-ui-polish.test.ts",
     "ui-shell/panels/side-pane-tabs-responsive-interactions.test.ts",
@@ -114,11 +94,7 @@ describe("Coding Plan E2E mock env", () => {
     "conversation-session-r3-mixed-entries.test.ts",
     "conversation-session-r3-mobile.test.ts",
     "conversation-session-create-telemetry.test.ts",
-    "conversation-session-offpeak-create.test.ts",
-    "conversation-session-offpeak-create-existing-session.test.ts",
-    "conversation-session-offpeak-subagent-model-inheritance.test.ts",
-    "conversation-session-off-peak-invalid-ticket.test.ts",
-  ])("prepares account facts as well as the off-peak gateway for %s", (spec) => {
+  ])("prepares account facts for %s", (spec) => {
     expect(
       shouldPrepareCodingPlanTeamMock([
         `./test/e2e/conversation-session/manual-review/pending/${spec}`,
@@ -131,15 +107,6 @@ describe("Coding Plan E2E mock env", () => {
         "./test/e2e/settings/providers/provider-family-responsive.test.ts",
       ]),
     ).toBe(true);
-  });
-  it.each([
-    "conversation-session-highspeed-card.test.ts",
-    "conversation-session-highspeed-card-draw-timeout.test.ts",
-    "conversation-session-highspeed-card-draw-miss.test.ts",
-    "conversation-session-highspeed-card-fallback-unlocks-model.test.ts",
-    "conversation-session-highspeed-card-admission-retains-draft.test.ts",
-  ])("prepares Coding Plan entitlement for highspeed draw case %s", (spec) => {
-    expect(shouldPrepareCodingPlanTeamMock([`./test/e2e/conversation-session/${spec}`])).toBe(true);
   });
   it("keeps both prepared mock addresses while a team worker activates only the team mock", () => {
     const environment: Record<string, string | undefined> = {};
@@ -174,7 +141,7 @@ describe("Coding Plan E2E mock env", () => {
     expect(environment.ZCODE_E2E_CODING_PLAN_MOCK_URL).toBe(upgradeBaseUrl);
   });
 
-  it("prepares the team mock for targeted login, provider transition, and off-peak cases", () => {
+  it("prepares the team mock for targeted login and provider transition", () => {
     expect(
       shouldPrepareCodingPlanTeamMock([
         "./test/e2e/subagents/subagent-coding-plan-login-catalog-stale.test.ts",
@@ -183,11 +150,6 @@ describe("Coding Plan E2E mock env", () => {
     expect(
       shouldPrepareCodingPlanTeamMock([
         "./test/e2e/conversation-session/models/conversation-session-model-provider-settings-transition.test.ts",
-      ]),
-    ).toBe(true);
-    expect(
-      shouldPrepareCodingPlanTeamMock([
-        "./test/e2e/conversation-session/automations/conversation-session-off-peak-team-plan.test.ts",
       ]),
     ).toBe(true);
   });

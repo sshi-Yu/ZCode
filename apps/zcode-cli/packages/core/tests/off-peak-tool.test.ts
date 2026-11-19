@@ -70,7 +70,7 @@ describe("off-peak tools", () => {
     expect(offPeakCreateToolEntry.metadata.needsApproval).toBe(true);
   });
 
-  it("registerBuiltInTools：只有 includeOffPeak 时才暴露 OffPeak 工具（与 automation 门独立）", () => {
+  it("registerBuiltInTools：includeOffPeak 只暴露只读 OffPeakList；OffPeakCreate 注册已退役（2026-11-19 拆除 C 阶段）", () => {
     const withoutFlag = createToolRegistry();
     registerBuiltInTools(withoutFlag, { includeAutomation: true });
     expect(withoutFlag.has("OffPeakCreate")).toBe(false);
@@ -78,7 +78,8 @@ describe("off-peak tools", () => {
 
     const withFlag = createToolRegistry();
     registerBuiltInTools(withFlag, { includeOffPeak: true });
-    expect(withFlag.has("OffPeakCreate")).toBe(true);
+    // 退役后新会话不再向模型提供闲时创建工具；历史 transcript 的 offpeak-create 结果渲染不受影响。
+    expect(withFlag.has("OffPeakCreate")).toBe(false);
     expect(withFlag.has("OffPeakList")).toBe(true);
     expect(withFlag.has("CronCreate")).toBe(false);
   });

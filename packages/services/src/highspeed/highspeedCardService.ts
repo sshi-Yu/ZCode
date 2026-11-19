@@ -1,14 +1,8 @@
 import {
   resolveHighspeedProviderId,
-  resolveHighspeedDrawProviderId,
-  highspeedDrawResponseSchema,
   HIGHSPEED_CARD_EXPIRED_PROVIDER_ERROR_CODE,
-  type HighspeedCardApi,
   type HighspeedCardUsage,
   type HighspeedCardSnapshot,
-  type HighspeedDrawRequest,
-  type HighspeedDrawResponse,
-  type HighspeedPrepareFallbackReason,
   type HighspeedPrepareTurnParams,
   type HighspeedPrepareTurnResult,
   type HighspeedServiceSnapshot,
@@ -20,10 +14,6 @@ import type { IHighspeedCardService } from "#src/highspeed/highspeedCard.js";
 export { createHighspeedHttpTransport } from "./highspeedHttpTransport.js";
 
 export interface HighspeedServiceTransport {
-  draw(
-    request: HighspeedDrawRequest,
-    headers?: Record<string, string>,
-  ): Promise<HighspeedDrawResponse>;
   healthy(cardId: string, headers?: Record<string, string>): Promise<HighspeedCardUsage>;
 }
 
@@ -60,13 +50,6 @@ export interface HighspeedCardServiceOptions {
   resolveInferenceAuth?: () => Promise<HighspeedInferenceAuth>;
   /** Mock 抽中只验证业务状态，消息继续走 session 当前的普通推理路由。 */
   inferenceMode?: "highspeed" | "session-default";
-  /** draw 只对 Coding Plan 用户开放；缺省视为支持，保持 mock 与既有测试语义。 */
-  resolveCodingPlanSupported?: () => Promise<boolean>;
-  /**
-   * 会话模型必须属于所选 Coding Plan Provider 的模型目录才允许发起新 draw（spec §3 规则 14）；
-   * 缺省视为覆盖，保持 mock 与既有测试语义。判定异常按不通过处理，避免陈旧组合打到 draw 接口。
-   */
-  resolveModelCovered?: (providerId: string, modelId: string) => Promise<boolean>;
 }
 
 const DEFAULT_WAIT_BUDGET_MS = 1000;
@@ -106,17 +89,6 @@ export function buildHighspeedCodingPlanAuthHeaders(params: {
           "Bigmodel-Project": params.projectId!,
         }
       : {}),
-  };
-}
-
-function toSnapshot(card: HighspeedCardApi): HighspeedCardSnapshot {
-  return {
-    cardId: card.card_id,
-    taskId: card.task_id,
-    provider: card.provider,
-    model: card.model,
-    issuedAt: card.issued_at,
-    expiresAt: card.expires_at,
   };
 }
 
@@ -187,15 +159,12 @@ export class HighspeedCardService implements IHighspeedCardService {
   private readonly wait: (milliseconds: number) => Promise<void>;
   readonly #resolveInferenceAuth: () => Promise<HighspeedInferenceAuth>;
   private readonly inferenceMode: "highspeed" | "session-default";
-  private readonly resolveCodingPlanSupported: () => Promise<boolean>;
   readonly #resolveHealthyIdentity: NonNullable<
     HighspeedCardServiceOptions["resolveHealthyIdentity"]
   >;
-  private readonly resolveModelCovered: (providerId: string, modelId: string) => Promise<boolean>;
   private card: HighspeedCardSnapshot | null = null;
   private nextDrawAt: number | null = null;
   private credentialScope: string | null = null;
-  private inFlightDraw: Promise<HighspeedDrawResponse | null> | null = null;
 
   constructor(options: HighspeedCardServiceOptions) {
     this.transport = options.transport;
@@ -213,8 +182,6 @@ export class HighspeedCardService implements IHighspeedCardService {
         targetType: "PERSONAL",
       }));
     this.inferenceMode = options.inferenceMode ?? "highspeed";
-    this.resolveCodingPlanSupported = options.resolveCodingPlanSupported ?? (async () => true);
-    this.resolveModelCovered = options.resolveModelCovered ?? (async () => true);
   }
 
   async prepareTurn(params: HighspeedPrepareTurnParams): Promise<HighspeedPrepareTurnResult> {
@@ -226,6 +193,12 @@ export class HighspeedCardService implements IHighspeedCardService {
 
     const now = this.now();
     this.expireCard(now);
+    // 个人工作台商业服务拆除（后端契约附录）：新抽卡（draw）属于促销获取链路，已从服务层退役。
+    // 只有「已激活的卡」继续可用：无当前有效卡时不再发起 draw，直接按 unavailable 降级，
+    // 会话轮次退回普通模型。已有卡的加速执行、healthy、归属隔离与到期规则保持原实现。
+    if (!this.card) {
+      return { kind: "fallback", reason: "unavailable", nextDrawAt: this.nextDrawAt };
+    }
     // Bug 根因：1s 预算曾只包住 draw 等待，门禁判定（模型目录要等 Provider Runtime 初始化）与
     // 加速鉴权解析都在预算外单独 await，Registry 未就绪或凭据解析卡住时发送被无限期挂起。
     // 预算从进入 prepareTurn 起算，所有 await 共享同一截止时间（spec §3 规则 12）。
@@ -243,48 +216,11 @@ export class HighspeedCardService implements IHighspeedCardService {
         return { kind: "fallback", reason: "unavailable", nextDrawAt: this.nextDrawAt };
       }
     }
-    if (this.card) {
-      return this.prepareWithCard(this.card, params, withinBudget);
-    }
-    if (this.nextDrawAt !== null && now < this.nextDrawAt) {
-      return { kind: "fallback", reason: "cooldown", nextDrawAt: this.nextDrawAt };
-    }
-
-    // draw body 的 provider 契约是服务端白名单里的 Coding Plan builtin 身份
-    // （builtin:zai-coding-plan / builtin:bigmodel-coding-plan）；Start/Off-Peak/API Key/
-    // 自定义 Provider 解析不出白名单值，直接降级，不打必被服务端拒绝的请求。
-    // 回归约束：禁止把会话选择的完整 providerId（如 account:bigmodel-team-coding-plan）
-    // 或账号 Family（bigmodel）透传进 body，两者都会被白名单以 3001 参数错误拒绝。
-    const drawProviderId = resolveHighspeedDrawProviderId(params.providerId);
-    if (!drawProviderId) {
-      return { kind: "fallback", reason: "unavailable", nextDrawAt: this.nextDrawAt };
-    }
-
-    // 门禁只拦新 draw；in-flight 是之前合法发起的请求，不受门禁影响。
-    if (!this.inFlightDraw) {
-      const gate = await withinBudget(this.checkDrawGates(params.providerId, params.model));
-      // 门禁超出预算按未就绪降级（规则 14），不发起 draw；判定本身不取消，完成后预热下一轮。
-      if (gate.kind === "timeout") {
-        return { kind: "fallback", reason: "unavailable", nextDrawAt: this.nextDrawAt };
-      }
-      if (gate.value) {
-        return { kind: "fallback", reason: gate.value, nextDrawAt: this.nextDrawAt };
-      }
-    }
-
-    const draw = this.inFlightDraw ?? this.startDraw(params, drawProviderId);
-    const outcome = await withinBudget(draw);
-    if (outcome.kind === "timeout") {
-      return { kind: "fallback", reason: "draw-timeout", nextDrawAt: this.nextDrawAt };
-    }
-
-    if (!outcome.value) {
-      return { kind: "fallback", reason: "unavailable", nextDrawAt: this.nextDrawAt };
-    }
-    if (!this.card) {
-      return { kind: "fallback", reason: "draw-miss", nextDrawAt: this.nextDrawAt };
-    }
     return this.prepareWithCard(this.card, params, withinBudget);
+  }
+
+  async prepareExistingTurn(params: HighspeedPrepareTurnParams): Promise<HighspeedPrepareTurnResult> {
+    return this.prepareTurn(params);
   }
 
   async getSnapshot(): Promise<HighspeedServiceSnapshot> {
@@ -292,7 +228,8 @@ export class HighspeedCardService implements IHighspeedCardService {
     return {
       card: this.card,
       nextDrawAt: this.nextDrawAt,
-      drawing: this.inFlightDraw !== null,
+      // 个人工作台商业服务拆除：新 draw 已退役，不存在 in-flight 抽卡。
+      drawing: false,
     };
   }
 
@@ -324,23 +261,8 @@ export class HighspeedCardService implements IHighspeedCardService {
   }
 
   /**
-   * 新 draw 的门禁：规则 14 模型目录、规则 11 Coding Plan 支持，按序判定，返回 fallback 原因，
-   * 全部通过返回 null。判定异常按不通过处理；不改变卡、冷却与 in-flight 状态。
-   * 会话恢复出的陈旧（coding-plan provider, 已下线模型）组合会照常通过 provider 白名单，
-   * 必须由模型目录拦下，避免把无效组合或无效凭据打到 draw 接口。
-   */
-  private async checkDrawGates(
-    providerId: string,
-    modelId: string,
-  ): Promise<Extract<HighspeedPrepareFallbackReason, "unavailable" | "no-coding-plan"> | null> {
-    if (!(await this.isModelCovered(providerId, modelId))) return "unavailable";
-    if (!(await this.isCodingPlanSupported())) return "no-coding-plan";
-    return null;
-  }
-
-  /**
    * 截止时间在进入 prepareTurn 时固定；计时器按需懒创建且只建一次，后续各段 await 复用，
-   * automation / 冷却 / 白名单外等同步降级路径不注册计时器。
+   * automation / 无卡退役降级等同步路径不注册计时器。
    */
   private createSendBudget(startedAt: number, budgetMs: number): SendBudget {
     const deadline = startedAt + budgetMs;
@@ -351,22 +273,6 @@ export class HighspeedCardService implements IHighspeedCardService {
       }));
       return Promise.race([task.then((value) => ({ kind: "settled" as const, value })), expired]);
     };
-  }
-
-  private async isCodingPlanSupported(): Promise<boolean> {
-    try {
-      return await this.resolveCodingPlanSupported();
-    } catch {
-      return false;
-    }
-  }
-
-  private async isModelCovered(providerId: string, modelId: string): Promise<boolean> {
-    try {
-      return await this.resolveModelCovered(providerId, modelId);
-    } catch {
-      return false;
-    }
   }
 
   private authScope(auth: HighspeedInferenceAuth): string {
@@ -386,45 +292,6 @@ export class HighspeedCardService implements IHighspeedCardService {
     this.card = null;
     this.nextDrawAt = null;
     this.credentialScope = null;
-  }
-
-  private startDraw(
-    params: HighspeedPrepareTurnParams,
-    drawProviderId: string,
-  ): Promise<HighspeedDrawResponse | null> {
-    const draw = (async () => {
-      const auth = this.inferenceMode === "highspeed" ? await this.#resolveInferenceAuth() : null;
-      const scope = auth ? this.authScope(auth) : null;
-      const ownerKey = auth?.ownerKey ?? (await this.#resolveHealthyIdentity())?.ownerKey;
-      const response = await this.transport.draw(
-        { task_id: params.taskId, provider: drawProviderId, model: params.model },
-        auth ? buildHighspeedCodingPlanAuthHeaders(auth) : undefined,
-      );
-      // 原因：旧账号的晚到响应曾无条件写入，随后拼接新账号鉴权使用旧卡。
-      // 请求和缓存绑定同一次身份；响应提交前验证，失效响应不改当前卡或冷却。
-      if (scope !== null && scope !== this.authScope(await this.#resolveInferenceAuth()))
-        return null;
-      this.applyDrawResponse(response, scope, ownerKey);
-      return response;
-    })().finally(() => {
-      if (this.inFlightDraw === draw) this.inFlightDraw = null;
-    });
-    this.inFlightDraw = draw;
-    return draw;
-  }
-
-  private applyDrawResponse(
-    response: HighspeedDrawResponse,
-    scope: string | null,
-    ownerKey?: string,
-  ): void {
-    const parsed = highspeedDrawResponseSchema.parse(response);
-    this.nextDrawAt = parsed.data.next_draw_at;
-    this.card = parsed.data.card
-      ? { ...toSnapshot(parsed.data.card), ...(ownerKey ? { ownerKey } : {}) }
-      : null;
-    this.credentialScope = scope;
-    this.expireCard(this.now());
   }
 
   private expireCard(now: number): void {

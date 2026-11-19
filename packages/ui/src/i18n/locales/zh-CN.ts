@@ -770,6 +770,7 @@ const zhCN: Record<string, string> = {
   "offPeak.chatCreated.boundHint": "将在本会话中运行",
   "settings.computerUse.disabledToast": "电脑控制已关闭，已有对话需重启 ZCode 后生效。",
   "settings.modelProvider.connectionUnavailableNotice": "当前套餐已不可用。",
+  "settings.modelProvider.teamProjectsLoadError": "无法加载团队项目。",
   "settings.modelProvider.switchConnection": "切换至「{connection}」",
   "settings.modelProvider.connectionSuggestionStale": "套餐状态已变化，请在模型设置中重新选择。",
   "settings.modelProvider.connectionSwitchFailed": "切换套餐失败，原连接未更改。请重试。",
@@ -7347,7 +7348,8 @@ const zhCN: Record<string, string> = {
   "chat.error.collapseDetails": "收起详情",
   "chat.error.feedback": "反馈问题",
   "chat.error.feedbackOpened": "已打开反馈，并自动带上报错现场",
-  "chat.error.noAvailableModel": "当前没有可用模型。请开通编程套餐或配置自定义模型。",
+  "chat.error.noAvailableModel":
+    "当前没有可用模型。请在模型设置中选择已有可用模型或配置个人 Provider。",
   "chat.error.remoteNoAvailableModel":
     "此远程设备尚无可用模型，请先在本机配置模型，保存后会自动同步到远程设备",
   "chat.error.sendFailed": "发送失败，请稍后重试。",
@@ -7360,19 +7362,19 @@ const zhCN: Record<string, string> = {
     "{model} 活动额度剩余 {percent}（{remaining} tokens）。",
   "chat.quota.startPlan.modelVeryLow": "{model} 套餐额度剩余 {percent}（{remaining} tokens）。",
   "chat.quota.startPlan.modelExhausted":
-    "{model} 可用额度已用完，可更换其他模型或切换到 Coding Plan 订阅。",
+    "{model} 的可用额度已用完。请选择其他可用模型或配置个人 Provider。",
   "chat.quota.startPlan.dailyExhausted":
-    "体验套餐可用额度已用完，请切换到 Coding Plan 订阅或等待额度恢复。",
-  "chat.quota.startPlan.concurrentLimit":
-    "当前系统繁忙，请更换模型、切换到 Coding Plan 订阅，或稍后再试。",
+    "Start Plan 的可用额度已用完。请选择其他可用模型、配置个人 Provider，或等待额度恢复。",
+  "chat.quota.startPlan.concurrentLimit": "当前系统繁忙。请选择其他可用模型或稍后重试。",
   "chat.quota.startPlan.concurrentLimit.retryExhausted":
-    "当前系统繁忙，当前自动重试已达到最大次数，请稍后再试或切换到 Coding Plan 订阅。",
+    "当前系统繁忙，自动重试已达上限。请稍后重试或选择其他可用模型。",
   "chat.quota.startPlan.concurrentLimit.switchModel":
     "当前模型请求已达到并发上限，请切换模型继续当前任务",
   "chat.quota.mcp.quotaExhausted": "ZCode MCP「{server}」今日额度已用完，明天自动恢复。",
   "chat.quota.mcp.codingPlanRequired":
-    "当前无 ZCode MCP「{server}」额度，请登录或开通 Coding Plan 使用。",
-  "chat.quota.providerLimited": "当前账户额度或套餐已达到使用限制。请升级或调整套餐后继续。",
+    "当前账号没有 ZCode MCP「{server}」的可用额度。请检查账号连接和已有套餐资格。",
+  "chat.quota.providerLimited":
+    "当前账户额度或套餐已达到使用限制。请选择其他可用模型或配置个人 Provider。",
   "chat.quota.action.upgrade": "升级",
   "chat.quota.action.renew": "续期",
   "chat.quota.action.switchModel": "切换模型",
@@ -8004,6 +8006,17 @@ const zhCN: Record<string, string> = {
   "offPeak.newTask.template.customize.title": "自定义",
   "offPeak.newTask.template.customize.description": "跳过模板，直接告诉它你想做什么。",
   "offPeak.tabs.scheduled": "定时任务",
+  "offPeak.retired.notice":
+    "闲时任务能力已退役，不再接受新建、编辑或重新排队。待处理记录不再派发，也不会转换为消耗正常额度的任务。记录状态仅表示最后一次本地观测，不代表云端已取消；只有原 owner 确认仍在执行的任务可继续收尾或取消。",
+  "offPeak.retired.cancelDescription":
+    "仅在原 owner 仍确认「{title}」正在执行时，取消这次已有执行？",
+  "offPeak.retired.pending": "能力已退役，不再派发",
+  "offPeak.history.recordedStatus.queued": "最后记录状态：等待闲时算力",
+  "offPeak.history.recordedStatus.paused": "最后记录状态：已暂停",
+  "offPeak.history.recordedStatus.running": "最后记录状态：运行中；当前执行状态尚未确认",
+  "offPeak.history.recordedStatus.completed": "最后记录状态：成功",
+  "offPeak.history.recordedStatus.failed": "最后记录状态：失败",
+  "offPeak.history.recordedStatus.cancelled": "最后记录状态：已取消",
   "offPeak.tabs.idle": "闲时任务",
   "automations.statusFilter.all": "全部",
   "automations.statusFilter.inProgress": "进行中",

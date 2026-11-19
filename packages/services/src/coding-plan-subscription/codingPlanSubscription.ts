@@ -128,3 +128,53 @@ export interface ICodingPlanSubscriptionService {
 
 export const ICodingPlanSubscriptionService =
   createServiceDescriptor<ICodingPlanSubscriptionService>(ServiceChannels.CodingPlanSubscription);
+
+/** 旧 RPC 兼容面：只允许保留读取，商业动作在 Host/客户端边界均明确拒绝。 */
+export function createRetiredCodingPlanSubscriptionService(
+  retainedReads: Pick<
+    ICodingPlanSubscriptionService,
+    | "getOffPeakClientConfig"
+    | "getDynamicWorkflowClientConfig"
+    | "getModelContextBudgetStrategy"
+    | "getRequestVerificationConfig"
+    | "getForceUpdateConfig"
+    | "getEnterprisePricing"
+  >,
+): ICodingPlanSubscriptionService {
+  // 旧 RPC 面的退役商业动作：旧客户端（含 UI 兼容期）调用必须明确失败。
+  // 不做空成功（空成功会被当成"无商品/无订单"继续走 UI 流程），也不触发任何云请求或凭据读取。
+  const unsupported = (action: string): Promise<never> =>
+    Promise.reject(new Error(`commercial_service_unsupported:${action}`));
+
+  return {
+    batchPreview: () => unsupported("batchPreview"),
+    getStaticProducts: () => unsupported("getStaticProducts"),
+    getStaticTeamProducts: () => unsupported("getStaticTeamProducts"),
+    getStartPlanPreview: () => unsupported("getStartPlanPreview"),
+    getManualClaimPlanPreviews: () => unsupported("getManualClaimPlanPreviews"),
+    claimManualPlan: () => unsupported("claimManualPlan"),
+    ...retainedReads,
+    getBillingDiscount: () => unsupported("getBillingDiscount"),
+    productInfo: () => unsupported("productInfo"),
+    preview: () => unsupported("preview"),
+    createSign: () => unsupported("createSign"),
+    updateSign: () => unsupported("updateSign"),
+    checkPayment: () => unsupported("checkPayment"),
+    checkPendingOrders: () => unsupported("checkPendingOrders"),
+    queryStripeCards: () => unsupported("queryStripeCards"),
+    bindStripeCard: () => unsupported("bindStripeCard"),
+    unbindStripeCard: () => unsupported("unbindStripeCard"),
+    payStripe: () => unsupported("payStripe"),
+    checkPaypalSupport: () => unsupported("checkPaypalSupport"),
+    createPaypalSetupToken: () => unsupported("createPaypalSetupToken"),
+    subscribePaypal: () => unsupported("subscribePaypal"),
+    getEnterpriseBalance: () => unsupported("getEnterpriseBalance"),
+    calculateEnterpriseOrder: () => unsupported("calculateEnterpriseOrder"),
+    createEnterpriseOrder: () => unsupported("createEnterpriseOrder"),
+    getEnterprisePendingOrders: () => unsupported("getEnterprisePendingOrders"),
+    cancelEnterpriseOrder: () => unsupported("cancelEnterpriseOrder"),
+    continueEnterpriseOrderPayment: () => unsupported("continueEnterpriseOrderPayment"),
+    checkEnterpriseOrderStatus: () => unsupported("checkEnterpriseOrderStatus"),
+  };
+
+}

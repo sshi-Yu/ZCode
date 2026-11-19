@@ -18,6 +18,7 @@ export const projectSidebarModule = {
     "task-row-hover",
     // 主导航挂 nav.primary 插槽组件（docs/plugins/extension-host.md §16.4）。
     "extension-slots",
+    "sidebar-bottom-activity",
   ],
   provides: ["project-sidebar"],
   publicEntrypoints: [

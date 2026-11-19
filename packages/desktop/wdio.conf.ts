@@ -86,7 +86,6 @@ import {
   clearCodingPlanUpgradeMockEnv,
   shouldPrepareCodingPlanTeamMock,
   shouldReuseDesktopE2EBuild,
-  isOffPeakTeamPlanSpec,
 } from "./test/e2e/helpers/coding-plan-mock-env.js";
 import {
   CN_UNLINKED_E2E_ZCODE_JWT,
@@ -96,10 +95,6 @@ import {
   createCodingPlanDataPlaneResponse,
   type DataPlaneTurnFixture,
 } from "./test/e2e/helpers/coding-plan-data-plane-response.js";
-import {
-  HIGHSPEED_MOCK_SCENARIO_ENV,
-  resolveHighspeedE2EMockScenario,
-} from "./test/e2e/helpers/highspeed-mock-env.js";
 import { createE2ERendererBridgeRootHooks } from "./test/e2e/helpers/e2e-renderer-bridge-root-hook.js";
 import { resetDraftRegenerationResend } from "#e2e/helpers/draft-regeneration-resend";
 import { installHookTrustFixture } from "./test/e2e/helpers/hook-trust-fixture.js";
@@ -259,18 +254,13 @@ const E2E_APP_CREDENTIALS_FILE = resolve(E2E_APP_CONFIG_DIR, "credentials.json")
 const E2E_APP_PROVIDER_CONFIG_FILE = resolve(E2E_APP_CONFIG_DIR, "provider_config.json");
 // staged Electron app 只有 main/host/renderer 产物，不携带仓库级 config/provider。
 // 若让 Host 依据 app.getAppPath() 推导 bundled config，重启后会把不存在的路径当作
-// bundled release，模型配置初始化直接失败。E2E 明确注入同一份只读基线；off-peak
-// spec 会在 startOffPeakE2EMock 中覆盖为带 mock endpoint 的 case-local 文件。
+// bundled release，模型配置初始化直接失败。E2E 明确注入同一份只读基线。
 const E2E_DEFAULT_ZCODE_BUILTIN_PROVIDER_CONFIG_FILE = resolve(
   REPO_ROOT,
   "config/provider/zcode-builtin.json",
 );
 const INITIAL_ZCODE_BUILTIN_PROVIDER_CONFIG_FILE =
   process.env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE?.trim();
-const E2E_OFFPEAK_ZCODE_BUILTIN_PROVIDER_CONFIG_FILE = resolve(
-  REPO_ROOT,
-  ".cache/desktop-e2e-provider-config/official-offpeak-mock.json",
-);
 const E2E_AGENTS_STATE_FILE = resolve(E2E_APP_CONFIG_DIR, "agents-state.json");
 const E2E_CLI_CONFIG_DIR = resolve(E2E_STORAGE_ROOT, "cli");
 const E2E_CLI_CONFIG_FILE = resolve(E2E_CLI_CONFIG_DIR, "config.json");
@@ -392,9 +382,6 @@ const SUBAGENT_RUNTIME_CATALOG_PROVIDER_ID = "e2e-claude-runtime-catalog";
 const SUBAGENT_RUNTIME_CATALOG_PROVIDER_NAME = "Claude Runtime Catalog E2E";
 const SUBAGENT_RUNTIME_CATALOG_MODEL = "claude-opus-4-8";
 const SUBAGENT_RUNTIME_CATALOG_AGENT_NAME = "e2e-claude-catalog-reviewer";
-const OFFPEAK_SUBAGENT_MODEL_INHERITANCE_SPEC =
-  "conversation-session-offpeak-subagent-model-inheritance.test.ts";
-const OFFPEAK_INVALID_TICKET_SPEC = "conversation-session-off-peak-invalid-ticket.test.ts";
 const MODEL_PROVIDER_PLAN_SURFACE_SPEC = "conversation-session-model-provider-plan-surface.test.ts";
 const SUBAGENT_TEAM_SCOPE_SPEC = "conversation-session-subagent-team-scope.test.ts";
 const TOOL_ERROR_SURFACE_SPEC = "conversation-session-tool-error-surface.test.ts";
@@ -663,7 +650,6 @@ process.env.ZCODE_DISABLE_FIXED_REMOTE_DEBUGGING_PORT = "1";
 let upstreamCaptureProxy: E2ENetworkCaptureProxy | null = null;
 let upstreamReplayServer: UpstreamReplayServer | null = null;
 let codingPlanTeamMockServer: Server | null = null;
-let offPeakTeamGateway: { port: number; origin: string; close(): Promise<void> } | null = null;
 let codingPlanTeamMockBaseUrl = "";
 let codingPlanDataPlaneProxy: E2ENetworkCaptureProxy | null = null;
 let codingPlanUpgradeMockServer: CodingPlanUpgradeMockServer | null = null;
@@ -1278,27 +1264,6 @@ async function startCodingPlanTeamMockIfNeeded(specs: string[] = []) {
     specs,
     "conversation-session-start-plan-independent.test.ts",
   );
-  const offPeakTeam = isOffPeakTeamPlanSpec(specs);
-  if (offPeakTeam) {
-    // 通用产品 mock 会替换成个人假凭证，无法验证 Team。只在测试进程替代 HTTP 服务端。
-    const { startOffPeakMockGateway, createServiceLogger } = await import("@zcode/services/node");
-    offPeakTeamGateway = await startOffPeakMockGateway(
-      {
-        logger: createServiceLogger("e2e-offpeak-team", { isDebugEnabled: false }),
-        resolveUpstream: async () => {
-          throw new Error("Team E2E 不允许访问真实上游");
-        },
-      },
-      {
-        port: 0,
-        readyDelayMs: 0,
-        readyTtlMs: 600000,
-        activeMs: 600000,
-        scenario: "foreground-subagents",
-      },
-    );
-    process.env.ZCODE_OFFPEAK_MOCK_PORT = String(offPeakTeamGateway.port);
-  }
   let providerResponsive = startIndependent;
   let faultMode:
     | "none"
@@ -1353,25 +1318,6 @@ async function startCodingPlanTeamMockIfNeeded(specs: string[] = []) {
   codingPlanTeamMockServer = createServer(async (request, response) => {
     if (await shareMockRoute(request, response)) return;
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
-    if (offPeakTeamGateway && url.pathname.startsWith("/api/v1/off-peak/")) {
-      const chunks: Buffer[] = [];
-      for await (const chunk of request) chunks.push(Buffer.from(chunk));
-      const headers = Object.fromEntries(
-        Object.entries(request.headers).flatMap(([key, value]) =>
-          typeof value === "string" && !["host", "connection", "content-length"].includes(key)
-            ? [[key, value]]
-            : [],
-        ),
-      );
-      const upstream = await fetch(new URL(request.url!, offPeakTeamGateway.origin), {
-        method: request.method,
-        headers,
-        ...(chunks.length ? { body: Buffer.concat(chunks) } : {}),
-      });
-      response.writeHead(upstream.status, Object.fromEntries(upstream.headers));
-      response.end(Buffer.from(await upstream.arrayBuffer()));
-      return;
-    }
     if (url.pathname === "/__e2e/coding-plan/case-mode" && request.method === "POST") {
       presentation = undefined;
       const body = await readRequestJson<{ mode?: typeof caseMode }>(request);
@@ -1825,7 +1771,6 @@ async function startCodingPlanTeamMockIfNeeded(specs: string[] = []) {
         data: {
           configs: {
             ...requestSecurityClientConfig(),
-            ...(offPeakTeam ? { offPeak: { enable_offpeak_task: true } } : {}),
           },
         },
       });
@@ -2299,8 +2244,6 @@ async function configureCodingPlanTeamMockForSpecs(specs: string[]) {
 }
 
 async function stopCodingPlanTeamMock() {
-  await offPeakTeamGateway?.close();
-  offPeakTeamGateway = null;
   if (codingPlanTeamMockServer) {
     await new Promise<void>((resolveStop) => {
       codingPlanTeamMockServer?.close(() => resolveStop());
@@ -2325,10 +2268,7 @@ async function stopCodingPlanTeamMock() {
 }
 
 const HIGHSPEED_DATA_PLANE_FIXTURE_PATHS = [
-  "test/e2e/fixtures/upstream/conversation-session/conversation-session-highspeed-card.json",
-  "test/e2e/fixtures/upstream/conversation-session/conversation-session-highspeed-card-draw-timeout.json",
   "test/e2e/fixtures/upstream/conversation-session/conversation-session-highspeed-card-draw-miss.json",
-  "test/e2e/fixtures/upstream/conversation-session/conversation-session-highspeed-card-fallback-unlocks-model.json",
   "test/e2e/fixtures/upstream/auth-config/highspeed-owner-ui-race.json",
 ];
 
@@ -2377,7 +2317,6 @@ async function startCodingPlanDataPlaneProxy(specs: readonly string[]) {
     // SR87 直接取首条正文会绕过 matcher，把标题也返回为主请求 SSE；与受控流共用真实回放入口。
     requestRedirects: specs.some(
       (spec) =>
-        spec.includes("conversation-session-highspeed-queue-edit.test.ts") ||
         spec.includes("conversation-session-model-provider-effective-selection.test.ts"),
     )
       ? [
@@ -2574,124 +2513,6 @@ async function startCodingPlanUpgradeE2EMock(
   codingPlanUpgradeMockServer = await startCodingPlanUpgradeMockServer(scenario, mockOptions);
   process.env[CODING_PLAN_UPGRADE_MOCK_BASE_URL_ENV] = codingPlanUpgradeMockServer.baseUrl;
   applyCodingPlanUpgradeMockEnv(process.env, codingPlanUpgradeMockServer.baseUrl);
-}
-
-// 闲时任务 E2E：off-peak spec 命中时开进程内 mock 网关（ZCODE_OFFPEAK_MOCK=1），
-// host 继承 worker env 后自动起网关、灰度强制开启；管理类 GUI spec 保持票据短暂 queued，
-// 避免创建落库唤醒 scheduler 后在 UI 来得及操作前就派发模型请求。
-async function startOffPeakE2EMock(specs: string[] = []): Promise<void> {
-  const isOffPeakSpec = specs.some((spec) => spec.includes("off-peak") || spec.includes("offpeak"));
-  if (isOffPeakTeamPlanSpec(specs)) {
-    delete process.env.ZCODE_OFFPEAK_MOCK;
-    const port = Number(process.env.ZCODE_OFFPEAK_MOCK_PORT);
-    if (!port) throw new Error("Team 闲时 E2E 网关未由 launcher 准备");
-    await materializeOffPeakMockZCodeBuiltinProviderConfig(port, "GLM-5.3");
-    process.env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE = E2E_OFFPEAK_ZCODE_BUILTIN_PROVIDER_CONFIG_FILE;
-    return;
-  }
-  if (isOffPeakSpec) {
-    process.env.ZCODE_OFFPEAK_MOCK = "1";
-    process.env.ZCODE_OFFPEAK_MOCK_PORT = "45197";
-    const isSubagentInheritanceSpec = isOffPeakSubagentModelInheritanceSpec(specs);
-    const isInvalidTicketSpec = isOffPeakInvalidTicketSpec(specs);
-    // 管理类 case 延后 ready；OP10 必须真跑 scheduler→turn→child，因此取号即 ready。
-    process.env.ZCODE_OFFPEAK_MOCK_READY_DELAY_MS =
-      isSubagentInheritanceSpec || isInvalidTicketSpec ? "0" : "60000";
-    process.env.ZCODE_OFFPEAK_MOCK_READY_TTL_MS = "600000";
-    process.env.ZCODE_OFFPEAK_MOCK_ACTIVE_MS = "600000";
-    process.env.ZCODE_OFFPEAK_MOCK_NEXT_POLL_S = "1";
-    if (isSubagentInheritanceSpec) {
-      process.env.ZCODE_OFFPEAK_MOCK_SCENARIO = "foreground-subagents";
-    } else if (isInvalidTicketSpec) {
-      process.env.ZCODE_OFFPEAK_MOCK_SCENARIO = "invalid-ticket";
-    } else if (
-      specs.some((spec) =>
-        spec.includes("conversation-session-offpeak-create-existing-session.test.ts"),
-      )
-    ) {
-      // 绑定会话复用已有固定文本响应，保留 queued 编辑窗口；capture 模式会继续
-      // 转发上游，不适合作为此例的离线应答。fixture 只匹配一个 child marker，不创建子任务。
-      process.env.ZCODE_OFFPEAK_MOCK_SCENARIO = "foreground-subagents";
-    } else {
-      delete process.env.ZCODE_OFFPEAK_MOCK_SCENARIO;
-    }
-    // D39 回归 spec：专用 availability 返回 false + next_take_at，验证 renderer
-    // 使用服务端快照提前置灰；其余 off-peak spec 保持 availability=true。
-    const isLimitPreGateSpec = specs.some((spec) => spec.includes("off-peak-limit-pre-gate"));
-    if (isLimitPreGateSpec) {
-      process.env.ZCODE_OFFPEAK_MOCK_AVAILABILITY_BLOCK_MS = "3600000";
-    } else {
-      delete process.env.ZCODE_OFFPEAK_MOCK_AVAILABILITY_BLOCK_MS;
-    }
-    await materializeOffPeakMockZCodeBuiltinProviderConfig(
-      Number(process.env.ZCODE_OFFPEAK_MOCK_PORT),
-      isSubagentInheritanceSpec ? "GLM-5.3" : "GLM-5.2",
-    );
-    process.env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE = E2E_OFFPEAK_ZCODE_BUILTIN_PROVIDER_CONFIG_FILE;
-  } else {
-    delete process.env.ZCODE_OFFPEAK_MOCK;
-    delete process.env.ZCODE_OFFPEAK_MOCK_AVAILABILITY_BLOCK_MS;
-    delete process.env.ZCODE_OFFPEAK_MOCK_PORT;
-    delete process.env.ZCODE_OFFPEAK_MOCK_SCENARIO;
-    if (INITIAL_ZCODE_BUILTIN_PROVIDER_CONFIG_FILE) {
-      process.env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE = INITIAL_ZCODE_BUILTIN_PROVIDER_CONFIG_FILE;
-    } else {
-      delete process.env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE;
-    }
-  }
-}
-
-async function materializeOffPeakMockZCodeBuiltinProviderConfig(
-  port: number,
-  modelId: string,
-): Promise<void> {
-  const sourcePath = resolve(REPO_ROOT, "config/provider/zcode-builtin.json");
-  const document = JSON.parse(await readFile(sourcePath, "utf8")) as {
-    config?: {
-      providerConfigRules?: {
-        providerRules?: Array<{
-          providerId: string;
-          config: { api?: { baseUrl?: string }; builtinModelIds?: string[] };
-        }>;
-      };
-    };
-  };
-  const offPeakProviderIds = [
-    "account:zai-offpeak-idle-plan",
-    "account:bigmodel-offpeak-idle-plan",
-  ];
-  for (const providerId of offPeakProviderIds) {
-    // Built-in 已收敛到规则列表；旧夹具读 providers 会在启动前报缺少 api。
-    const offPeakProvider = document.config?.providerConfigRules?.providerRules?.find(
-      (rule) => rule.providerId === providerId,
-    )?.config;
-    if (!offPeakProvider?.api) {
-      throw new Error(`ZCode Built-in Config 缺少 ${providerId}.api`);
-    }
-    offPeakProvider.api.baseUrl = `http://127.0.0.1:${port}/api/v1/off-peak/anthropic`;
-    // 原闲时 fixture 的单模型白名单应迁到当前 Built-in 输入，不能继续依赖已退役的
-    // client-config models 字段；仅修改本次 E2E 隔离文件，生产名单不变。
-    offPeakProvider.builtinModelIds = [modelId];
-  }
-  await mkdir(resolve(E2E_OFFPEAK_ZCODE_BUILTIN_PROVIDER_CONFIG_FILE, ".."), {
-    recursive: true,
-  });
-  await writeFile(
-    E2E_OFFPEAK_ZCODE_BUILTIN_PROVIDER_CONFIG_FILE,
-    `${JSON.stringify(document, null, 2)}\n`,
-    "utf8",
-  );
-}
-
-// Highspeed E2E 使用 Host 内置的确定性 transport；按 spec 注入场景，避免普通会话
-// 在默认测试套件里意外抽到卡。该变量必须在 Electron 启动前设置，Host 才能装配 mock。
-function configureHighspeedE2EMock(specs: string[] = []): void {
-  const scenario = resolveHighspeedE2EMockScenario(specs);
-  if (scenario) {
-    process.env[HIGHSPEED_MOCK_SCENARIO_ENV] = scenario;
-  } else {
-    delete process.env[HIGHSPEED_MOCK_SCENARIO_ENV];
-  }
 }
 
 async function stopCodingPlanUpgradeE2EMock() {
@@ -3305,10 +3126,7 @@ async function resetE2EHome(specs: string[] = []) {
   });
   seedE2EStartupState(specs);
   await seedRemoteOnboardingFixture({
-    // 营销弹窗会抢占首次引导的焦点；该套件从已完成引导的账号开始，独立验证弹窗交付。
-    enabled:
-      process.env.ZCODE_E2E_REMOTE_PROFILE === "1" ||
-      specs.some((spec) => spec.endsWith("ui-shell/marketing/marketing-touch-delivery.test.ts")),
+    enabled: process.env.ZCODE_E2E_REMOTE_PROFILE === "1",
     specs,
     appConfigDir: E2E_APP_CONFIG_DIR,
     userId: E2E_USER_PROFILE.id,
@@ -4167,14 +3985,6 @@ function isSubagentRuntimeCatalogReasoningSpec(specs: string[] = []) {
   return specs.some((spec) => spec.includes(SUBAGENT_RUNTIME_CATALOG_REASONING_SPEC));
 }
 
-function isOffPeakSubagentModelInheritanceSpec(specs: string[] = []) {
-  return specs.some((spec) => spec.includes(OFFPEAK_SUBAGENT_MODEL_INHERITANCE_SPEC));
-}
-
-function isOffPeakInvalidTicketSpec(specs: string[] = []) {
-  return specs.some((spec) => spec.includes(OFFPEAK_INVALID_TICKET_SPEC));
-}
-
 function isModelProviderPlanSurfaceSpec(specs: string[] = []) {
   return specs.some((spec) => spec.includes(MODEL_PROVIDER_PLAN_SURFACE_SPEC));
 }
@@ -4186,12 +3996,7 @@ function isToolErrorSurfaceSpec(specs: string[] = []) {
 function seedE2EBuiltInSubagentModelOverrides(specs: string[] = []) {
   const builtInModelSelectionOverridesSpec = isBuiltInSubagentModelSelectionOverridesSpec(specs);
   const runtimeCatalogSpec = isSubagentRuntimeCatalogReasoningSpec(specs);
-  const offPeakSubagentModelInheritanceSpec = isOffPeakSubagentModelInheritanceSpec(specs);
-  if (
-    !builtInModelSelectionOverridesSpec &&
-    !runtimeCatalogSpec &&
-    !offPeakSubagentModelInheritanceSpec
-  ) {
+  if (!builtInModelSelectionOverridesSpec && !runtimeCatalogSpec) {
     return;
   }
 
@@ -4212,7 +4017,7 @@ function seedE2EBuiltInSubagentModelOverrides(specs: string[] = []) {
         modelId: E2E_PROVIDER_SECONDARY_MODEL,
       };
   const initialGeneralPurposeSelection =
-    runtimeCatalogSpec || offPeakSubagentModelInheritanceSpec
+    runtimeCatalogSpec
       ? overrideSelection
       : {
           providerId: e2eProviderPreset.providerId,
@@ -4327,47 +4132,6 @@ maxTurns: 1
 You are the E2E provider registry reviewer. Reply only with the requested marker.
 `,
     });
-  }
-
-  if (isOffPeakSubagentModelInheritanceSpec(specs)) {
-    profileEntries.push(
-      {
-        name: "Code Search",
-        content: `---
-name: Code Search
-description: E2E custom foreground subagent with an explicit alternate provider model.
-model: custom:${E2E_PROVIDER_ALTERNATE_PROVIDER_ID}:${E2E_PROVIDER_SECONDARY_MODEL}
-tools: Read
-maxTurns: 1
----
-You are the E2E Code Search reviewer. Reply only with the requested marker.
-`,
-      },
-      {
-        name: "E2E OffPeak Inherit Reviewer",
-        content: `---
-name: E2E OffPeak Inherit Reviewer
-description: E2E custom foreground subagent that normally inherits the session model.
-tools: Read
-maxTurns: 1
----
-You are the E2E inherited-model reviewer. Reply only with the requested marker.
-`,
-      },
-      {
-        name: "E2E OffPeak Background Reviewer",
-        content: `---
-name: E2E OffPeak Background Reviewer
-description: E2E custom profile configured to run in the background.
-model: custom:${E2E_PROVIDER_ALTERNATE_PROVIDER_ID}:${E2E_PROVIDER_SECONDARY_MODEL}
-tools: Read
-background: true
-maxTurns: 1
----
-This E2E profile must be rejected before any provider request during an idle-plan turn.
-`,
-      },
-    );
   }
 
   if (isToolErrorSurfaceSpec(specs)) {
@@ -4917,9 +4681,6 @@ export const config: WebdriverIO.Config = {
           }
           Object.assign(config.runnerEnv, {
             [CODING_PLAN_TEAM_MOCK_BASE_URL_ENV]: codingPlanTeamMockBaseUrl,
-            ...(offPeakTeamGateway
-              ? { ZCODE_OFFPEAK_MOCK_PORT: String(offPeakTeamGateway.port) }
-              : {}),
           });
         }
         // Bugfix: Coding Plan webview origin 是 Vite 编译期常量；mock 必须先于
@@ -4930,10 +4691,6 @@ export const config: WebdriverIO.Config = {
         const codingPlanUpgradeMockBaseUrl =
           process.env[CODING_PLAN_UPGRADE_MOCK_BASE_URL_ENV]?.trim();
         if (codingPlanUpgradeMockBaseUrl) {
-          // 正式 Rewards 用例使用自托管网页，不依赖开发者的 localhost:3000 服务。
-          if (configuredE2ESpecs.some((spec) => spec.includes("marketing-touch-rewards"))) {
-            process.env.VITE_REWARDS_WEBVIEW_ORIGIN = codingPlanUpgradeMockBaseUrl;
-          }
           if (!config.runnerEnv) {
             throw new Error(
               "wdio config 缺少 runnerEnv，coding plan upgrade mock 端口无法透传给 worker",
@@ -4992,7 +4749,6 @@ export const config: WebdriverIO.Config = {
     applyUpstreamE2EHttpModeForWorker(specs);
     applyAskUserQuestionClockScaleForWorker(specs);
     applyE2EProviderEnv(specs);
-    configureHighspeedE2EMock(specs);
     currentE2EBeforeSessionError = null;
     applyE2EWorkerModelRetryEnv(process.env, specs, configuredModelRetryMaxRetries);
     currentE2EChromiumUserDataDir = resolveE2EWorkerChromiumProfileDir(
@@ -5093,7 +4849,6 @@ export const config: WebdriverIO.Config = {
           startUpstreamHttpIfNeeded: startUpstreamE2EHttp,
           startCodingPlanDataPlaneProxyIfNeeded: startCodingPlanDataPlaneProxy,
           startPluginCdnZipFixtureIfNeeded,
-          startOffPeakMockIfNeeded: startOffPeakE2EMock,
         });
         if (process.platform === "darwin" && specs.some(isNativeKeychainCredentialSpec)) {
           // Main 首次访问发生在界面就绪前；原生专项必须先准备隔离 HOME 的系统库入口。

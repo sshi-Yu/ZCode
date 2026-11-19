@@ -13,36 +13,53 @@ import {
 } from "#e2e/helpers/desktop-app";
 
 const byId = (id: string) => $(`[data-testid="${id}"]`);
-function origin() {
+function origin(): string {
   const value = process.env.ZCODE_CODING_PLAN_UPGRADE_MOCK_BASE_URL;
   if (!value) throw new Error("Missing isolated marketing fixture");
-  return value;
+  const url = new URL(value);
+  if (url.protocol !== "http:" || url.hostname !== "127.0.0.1") {
+    throw new Error("Marketing fixture must be an isolated loopback server");
+  }
+  return url.origin;
 }
-async function state() {
-  return (await (await fetch(`${origin()}/__e2e/marketing/state`)).json()) as {
-    events: Array<{ campaign_id: string; action_type: string }>;
-    requestDetails: Array<{ method: string; path: string; headers: { authenticated: boolean } }>;
-  };
-}
-async function reset(options: Record<string, boolean> = {}) {
-  const response = await fetch(`${origin()}/__e2e/marketing/reset`, {
-    method: "POST",
-    body: JSON.stringify(options),
-  });
-  expect(response.ok).toBe(true);
-}
-async function expectAnonymous() {
+async function expectAnonymous(): Promise<void> {
   const credentials = JSON.parse(await readFile(getE2EAppDataPaths().credentialsFile, "utf8"));
   // 只判断凭据是否存在，失败输出也不得带出凭据内容。
   expect(Boolean(credentials.zcodejwttoken)).toBe(false);
 }
+async function expectNoMarketing(): Promise<void> {
+  const response = await fetch(`${origin()}/__e2e/marketing/state`);
+  if (!response.ok) throw new Error(`Marketing ledger unavailable: ${response.status}`);
+  const ledger = (await response.json()) as {
+    events: unknown[];
+    requestDetails: Array<{ method: string; path: string }>;
+  };
+  expect(ledger.events).toEqual([]);
+  expect(
+    ledger.requestDetails
+      .filter(({ path }) =>
+        /^\/(?:api\/v1\/marketing\/|marketing-assets\/|api\/v1\/zcode-plan\/billing\/(?:preview|claim)(?:\/|$))/u.test(
+          path,
+        ),
+      )
+      .map(({ method, path }) => ({ method, path })),
+  ).toEqual([]);
+  expect(await byId("marketing-banner").isDisplayed()).toBe(false);
+  expect(await byId("cloud-content-dialog").isDisplayed()).toBe(false);
+  expect(await byId("rewards-surface").isDisplayed()).toBe(false);
+}
 
-describe("Marketing Touch anonymous boundaries", () => {
-  before(async () => {
+describe("PCS06: 匿名状态不再请求或显示营销", () => {
+  after(async () => {
+    await browser.electron.restoreAllMocks();
+    await clearAppData();
+  });
+
+  it("退出后冷启动、online 和原刷新周期不拉取或上报营销", async function () {
+    this.timeout(120_000);
     await waitForDefaultWorkspaceReady();
     const popup = byId("cloud-content-dialog");
     if (await popup.isExisting()) await popup.$('[data-slot="dialog-close"]').click();
-    await reset();
     const relaunch = await browser.electron.mock("app", "relaunch");
     await relaunch.mockResolvedValue(undefined);
     const quit = await browser.electron.mock("app", "quit");
@@ -51,7 +68,6 @@ describe("Marketing Touch anonymous boundaries", () => {
     await byId(TID_LOGOUT_BUTTON).click();
     await byId(TID_CONFIRM_DIALOG_CONFIRM).waitForDisplayed();
     await byId(TID_CONFIRM_DIALOG_CONFIRM).click();
-    // mock 调用记录跨进程缓存，直接读取不会刷新，必须显式同步。
     await browser.waitUntil(
       async () => {
         await relaunch.update();
@@ -62,12 +78,14 @@ describe("Marketing Touch anonymous boundaries", () => {
     );
     await expectAnonymous();
     await browser.electron.restoreAllMocks();
-  });
-  beforeEach(async function () {
-    // 启动时先不投放，避免营销弹窗遮挡首次匿名 WelcomeScreen。
-    await reset();
+
+    // 退出前的账号态流量与匿名冷启动分开；开启合成投放以防空投放掩盖旧请求。
+    const reset = await fetch(`${origin()}/__e2e/marketing/reset`, {
+      method: "POST",
+      body: JSON.stringify({ popup: true, banner: true }),
+    });
+    expect(reset.ok).toBe(true);
     await browser.reloadSession();
-    // 若冷启动出现 WelcomeScreen，走公开的“暂不设置”路径进入匿名工作区。
     await browser.waitUntil(
       async () =>
         (await byId(TID_LOGIN_TRIGGER).isExisting()) ||
@@ -80,54 +98,10 @@ describe("Marketing Touch anonymous boundaries", () => {
     }
     await waitForDefaultWorkspaceReady();
     await expectAnonymous();
-    await reset({
-      popup: this.currentTest!.title.includes("popup"),
-      banner: this.currentTest!.title.includes("banner"),
-    });
+    await expectNoMarketing();
     await browser.execute(() => window.dispatchEvent(new Event("online")));
-  });
-  after(async () => {
-    await browser.electron.restoreAllMocks();
-    await clearAppData();
-  });
-  it("MTE-08 anonymous popup: queries and reports cancellation without Authorization", async () => {
-    await byId("cloud-content-dialog").waitForDisplayed({ timeout: 15_000 });
-    await byId("cloud-content-dialog").$('[data-slot="dialog-close"]').click();
-    await byId("cloud-content-dialog").waitForExist({ reverse: true });
-    await browser.waitUntil(async () => (await state()).events.length === 1);
-    const ledger = await state();
-    expect(ledger.events).toEqual([{ campaign_id: "independent", action_type: "cancel" }]);
-    const requests = ledger.requestDetails.filter((request) =>
-      request.path.startsWith("/api/v1/marketing/touch"),
-    );
-    expect(requests.some((request) => request.method === "GET")).toBe(true);
-    expect(requests.filter((request) => request.method === "POST")).toHaveLength(1);
-    expect(requests.every((request) => !request.headers.authenticated)).toBe(true);
-  });
-  it("MTE-05 anonymous banner: closes normally and opens login instead of submitting a claim", async () => {
-    const banner = byId("marketing-banner");
-    await banner.waitForDisplayed({ timeout: 15_000 });
-    // 空文案 fixture 使用 App 的本地化回退名称，不能只匹配英文。
-    await banner.$('button[aria-label="Close"], button[aria-label="关闭"]').click();
-    await banner.waitForExist({ reverse: true });
-    await browser.waitUntil(async () => (await state()).events.length === 1);
-    const closed = await state();
-    expect(closed.events).toEqual([{ campaign_id: "banner-1", action_type: "cancel" }]);
-    expect(
-      closed.requestDetails
-        .filter((request) => request.path.endsWith("/touch/action"))
-        .every((request) => !request.headers.authenticated),
-    ).toBe(true);
-    await fetch(`${origin()}/__e2e/marketing/redeliver-banner`, { method: "POST" });
-    await browser.execute(() => window.dispatchEvent(new Event("online")));
-    await banner.waitForDisplayed({ timeout: 15_000 });
-    await banner.$('button[aria-label="Open"], button[aria-label="打开"]').click();
-    await byId(TID_LOGIN_USE_API_KEY_BUTTON).waitForDisplayed({ timeout: 15_000 });
-    const after = await state();
-    expect(after.events).toEqual(closed.events);
-    expect(
-      after.requestDetails.filter((request) => request.path.endsWith("/billing/claim")),
-    ).toHaveLength(0);
+    await browser.pause(32_000);
     await expectAnonymous();
+    await expectNoMarketing();
   });
 });
