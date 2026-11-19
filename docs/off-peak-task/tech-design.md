@@ -1,19 +1,19 @@
 # 闲时任务（Off-Peak Task）技术设计
 
+> **历史设计，非当前功能指南：** 闲时任务已退役，不再接受新建、编辑或重新排队，待处理记录不再派发。历史记录保留；状态仅表示最后一次本地观测，不代表云端已取消。只有原 owner 确认仍在执行的任务可继续收尾或取消。下文及其配套历史设计中的创建、取号和调度描述不再适用，当前行为以代码为准。普通定时任务不受此退役影响。
+
 > **生命周期实现：** [后台执行与生命周期计划](./background-lifecycle-plan.md) 定义 owner、时序、接口及验证进度。历史设计中的单轮收口由 CLI 整项执行收口取代。
 
-> **状态：已实现；2026-08-24 已同步 Provider Refactor M4 执行事实。** 当前仓库已包含 `offPeak`
+> **历史状态（2026-08-24）：** 当时仓库包含 `offPeak`
 > 领域类型、SQLite Repo、Service、scheduler/main/host 派发、标准 Provider/Model 执行链、UI 和 mock。
-> Scheduled Automation 仍是独立领域，边界见 [Scheduled Tasks Main View](../ui/scheduled-tasks-main-view.md)。
+> Scheduled Automation 是独立领域，边界见 [Scheduled Tasks Main View](../ui/scheduled-tasks-main-view.md)。
 >
 > **2026-08-24 Provider Config / Model Execution 收口：** `client/configs.offPeak` 只控制曝光；隐藏的
 > Built-in `builtin:offpeak-idle-plan` 提供 Provider 静态事实，Effective Model Config 提供模型静态事实。
 > 自动回合提交标准 Model Selection，`modelExecution` 只携带本次 Request Auth 与 Child 策略；旧
 > `turnRuntimeModel`、临时 Registry overlay 和 Session model restore 链已经删除。
 
-> 配套文档：`spec.md`（当前产品口径）、`decisions.md`（D1–D44 历史决策记录）、
-> `glossary.md`（当前术语）、`implementation-notes.md`（代码地图）。决策记录中的早期方案必须按
-> 后续 superseded 标记阅读；当前行为以代码、本文和实现说明为准。
+> 配套历史文档：`spec.md`、`decisions.md`、`glossary.md`、`implementation-notes.md`。这些文档保留退役前的产品口径、决策、术语和代码地图，不作为当前行为依据。
 
 ## 0. 导读与关键决策
 

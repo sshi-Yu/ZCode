@@ -15,7 +15,7 @@ description: 修改 ZCode 会话管理（左侧任务列表、tasks-index.sqlite
 
 ```text
 CLI  db.sqlite      存在性(软删除 time_deleted)、title+title_source、time_created/updated、last_outcome、正文、goal、fork、trace
-Host tasks-index    project_id、pinned、archived、unread_at(+CAS)、sort_order、projects/roots/hosts、定时/闲时；控制端另存跨设备分组成员与顺序
+Host tasks-index    project_id、pinned、archived、unread_at(+CAS)、sort_order、projects/roots/hosts、定时/闲时历史；控制端另存跨设备分组成员与顺序
                     cli_* 列 = CLI 事实的只读镜像，唯一写者 taskIndexSyncer
 禁止：CLI 写 app 库；Host 写 db.sqlite；Host 对任何 cli_* 列写 Date.now() 或从 snapshot 推导的值
 ```
@@ -63,7 +63,7 @@ Host tasks-index    project_id、pinned、archived、unread_at(+CAS)、sort_orde
 - 展示偏好：有效新版 view 优先，否则沿用旧 organizeBy；旧 grouped 默认进入按分组。新建任务固化 draft 的分组 placement，首次发送后幂等提交，不在导航时猜测。
 - 远程：项目与任务组织态留在远端 app 库；本机持久化 host 连接记录、用户已添加的项目入口及基础信息缓存。离线不可展开、改名或编辑 roots，项目操作仅允许移除本机入口与缓存，远端项目与会话保留，无待同步删除队列。远程只允许创建时确定的一个固定 root，host 上限 20，启动自动连接已保存 host。
 - 重连只刷新本机仍存在的入口，迟到响应不得 upsert 已移除入口；setting.json 从本机入口列表派生，不反向重建已移除入口。重新添加远程项目须由用户主动选择，或由在线创建成功显式添加；删除本机 host 只移除连接及所属入口。
-- 设置页 agent 配置管理按真实目录（roots 去重平铺）；定时 / 闲时 / Bots 选虚拟项目。
+- 设置页 agent 配置管理按真实目录（roots 去重平铺）；定时 / Bots 选虚拟项目（闲时创建已退役，仅历史只读）。
 
 ## 4. 数据与迁移纪律
 

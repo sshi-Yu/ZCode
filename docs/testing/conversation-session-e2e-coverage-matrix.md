@@ -1782,6 +1782,8 @@ PV4-01/02/06 专项覆盖。
 
 case 语义见 catalog `OP` 组（`docs/off-peak-task/spec.md` 为产品真源，Telemetry V1 字段与投递边界见 `docs/monitoring/off-peak-task-telemetry-v1.md`）。E2E 全部由进程内 mock 网关驱动（`ZCODE_OFFPEAK_MOCK=1`），桌面 `desktop-continuous` 链路。自动化范围经用户 2026-07-15 剪枝确认为 5 条核心，2026-08-03 增补 execution-scoped foreground subagent 继承回归 OP10；Telemetry 不新增 WDIO spec，复用 OP01/OP02/OP05/OP06 主路径并由 focused tests 覆盖字段排列。
 
+> **2026-11-19 退役修订：** 闲时创建/续跑已本地拒绝（`off_peak_retired`，无网络、不落库），CLI 不再注册 `OffPeakCreate`，仅 `OffPeakList` 只读、历史渲染与驻留执行按原 owner 收尾保留（[退役契约](../superpowers/specs/2026-11-19-offpeak-retirement-contract.md)）。下表 OP01–OP10 与上方 retired/planned 记录为退役前口径，不再按原创建链路补验收；现行退役验收见 [personal-workbench-commercial-retirement-e2e](personal-workbench-commercial-retirement-e2e.md)。
+
 服务层原证据 `retired:packages/services/test/offPeakE2eIntegration.test.ts` 已退役，以下为原测试范围（mock 网关 + server client + 编排服务 + repo 全链路真跑：取号→轮询晋级 ready→准入固定响应→settle 核销 / 400/3102 到期失败且不自动补号 / Pause-ready 过期-Continue 重取号）——OP02/OP04/OP07 的服务层机制现为 missing，待补验收；WDIO GUI 层（OPF/OPA/OPP/OPR/OPB）仍 planned，依赖桌面构建与真实 renderer 交互。mock 网关 resolveUpstream 返回 null 时回固定 Anthropic 响应，E2E 无需真实模型 key。（retired: 为退役历史证据，不计现行覆盖。）
 
 | Catalog ID | 覆盖状态 | 自动化 | 备注                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -3874,6 +3876,8 @@ QR-E2E-11/12/13 的阈值、失效和优先级由 fake-timer focused tests 提�
 | HS-E2E-04 | pending-review | `packages/desktop/test/e2e/conversation-session/entitlements/conversation-session-highspeed-card-admission-retains-draft.test.ts` + `hit-invalid-model` Host mock + 准入竞态探针                                                                                                                                                                                                                                                                                                                                                                                                                             | 待人工复核：抽卡后撤销 Coding Plan 使 Highspeed 与退回目标同时离开 Registry；ACK 前拒绝后正文恢复、无错误 Banner、退卡并解锁模型选择器                             |
 | HS-E2E-06 | pending-review | `packages/desktop/test/e2e/conversation-session/entitlements/conversation-session-highspeed-queue-edit.test.ts` + `hit-queue-edit` Host mock；UI/Bootstrap focused tests                                                                                                                                                                                                                                                                                                                                                                                                                                     | 待人工复核：Highspeed 运行中入队后撤回编辑，恢复普通 Coding Plan Selection；修改重发不污染 Composer/Session，错误面不暴露临时 Provider                             |
 
+> **2026-11-19 退役修订（新抽卡）：** 新 draw 已退役：无当前有效卡时不再发起抽卡，直接按 unavailable 降级；已激活卡的合法使用、鉴权与到期仍按原合同（上位设计 [personal-workbench-commercial-services-design](../superpowers/specs/2026-11-19-personal-workbench-commercial-services-design.md)）。HS01/HS02/HS05、HS-E2E-01 等依赖 fresh draw 的条目为退役前证据，不作为现行验收；持卡路径（HS04/HS09/HS10、HS-E2E-04/05/06/07）语义不变。最新无卡桌面回放在 Team 模型选择步骤失败，不据此声称桌面通过；现行退役验收见 [personal-workbench-commercial-retirement-e2e](personal-workbench-commercial-retirement-e2e.md)。
+
 ## PDF. Composer PDF 附件
 
 - PDF01（pending）：Composer attachment unit + bootstrap/core persistence tests；覆盖 local/Web/remote admission、MIME/20MiB/`%PDF` 校验、artifact/FilePart/provider PDF block。
@@ -4567,6 +4571,8 @@ CLI `v4-cold-resume.test.ts` 覆盖无独立 workspace identity 的 child 按持
 | SCB03 | 灰度关闭/失败时模型调用 OffPeakCreate                      | 稳定失败，无 createTask/取号副作用；正常配置仍可创建                             | accepted / Host 集成测试 + 既有闲时 E2E           |
 | SCB04 | 兼容 legacy、配置缺失/失败/永不返回                        | budget 无 IO；Runtime、日志、子 Agent 为 preflight-v1；128K/64K 的 threshold=94K | accepted / 单测 + OTB 回归                        |
 | SCB05 | desktop continuous 与 mobile replayable / remote workspace | shared-host、identity 与 scope 不变；remote 不注册闲时工具，预算不联网           | accepted / 协议与 remote Host 单测                |
+
+> **2026-11-19 退役修订：** `OffPeakCreate` 已从 CLI 工具注册移除（模型不可再调用），`OffPeakList` 只读保留。SCB01 的「工具含 OffPeakCreate/List」与 SCB03 的「正常配置仍可创建」为退役前历史口径；现行合同见 [退役契约](../superpowers/specs/2026-11-19-offpeak-retirement-contract.md)，验收见 [personal-workbench-commercial-retirement-e2e](personal-workbench-commercial-retirement-e2e.md)。
 
 新 case：`conversation-session-config-independent-startup.test.ts` 位于 manual-review/pending；
 provider fixture 使用同名 canonical formal target。配置网关不能启用 ZCODE_OFFPEAK_MOCK 绕过真实读取。

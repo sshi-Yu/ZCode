@@ -1604,7 +1604,7 @@ nodes:
 
   - id: "capability.off-peak-telemetry"
     kind: "capability"
-    label: "Off-Peak creation, upgrade, and automatic-turn telemetry"
+    label: "[Partially retired] Off-Peak automatic-turn telemetry; creation and upgrade telemetry retired 2026-11-19"
     aliases:
       - "off_peak_task_create_result"
       - "off_peak_task_id"
@@ -1612,6 +1612,8 @@ nodes:
       - "coding_plan_upgrade_ck"
       - "闲时任务埋点"
       - "闲时任务升级埋点"
+    invariants:
+      - "Retired 2026-11-19: createTask is rejected locally (off_peak_retired) and CLI OffPeakCreate is unregistered, so creation/upgrade telemetry can no longer fire. Automatic-turn telemetry rows are historical pre-retirement evidence; live-path firing for resident executions is not verified here. See docs/superpowers/specs/2026-11-19-offpeak-retirement-contract.md."
     docs:
       - "docs/monitoring/off-peak-task-telemetry-v1.md"
       - "docs/off-peak-task/spec.md"
@@ -1654,7 +1656,7 @@ nodes:
     invariants:
       - "Implemented: per-session cliDefaultSelection is separate from Runtime Session continuation selection; idle background Agent/Bash and SendMessage share the existing scheduler. Ticket ownership lasts through whole-task completion without config or database migration."
       - "Z.ai and BigModel each own one complete hidden Off-Peak Built-in Provider in the ordinary Registry. Account connection enables only the current family; neither Provider changes family at execution time, and visibility filters only Provider Settings and Model Selection."
-      - "3.12.2: supported local hosts advertise OffPeak tools without reading client/configs; OffPeakCreate validates gray configuration, plan and model in the Host handler before ticket/task creation. Page visibility and remote/subagent restrictions stay separate."
+      - "Retired 2026-11-19 (docs/superpowers/specs/2026-11-19-offpeak-retirement-contract.md): CLI OffPeakCreate registration is removed and Host createTask is rejected locally with off_peak_retired (no ticket/persistence/network); read-only OffPeakList remains verified. Resident-execution ticket handover/renewal is contract design limited to original-owner cancellation/completion; its production call sites are not verified here. The historical 3.12.2 gray/plan/model validation in the Host handler described pre-retirement creation."
       - "Off-Peak submissions use one standard ModelSelection and the ordinary ModelFactory; request auth, ticket, attribution, and child override are narrow execution context rather than a second model config."
       - "Idle execution temporarily sets in-memory Session Selection for owned continuations while persistence retains the ordinary selection. It never changes App Recent or Configured Default and never enters the ordinary busy queue; accepted user input takes over subsequent execution."
       - "Todo104 storage refinement: editing migrated Off-Peak tasks updates model_selection without clearing or back-writing the published model/thought_level columns; those columns remain rollback snapshots, not a second execution selection. New records need not synthesize legacy values."
@@ -2834,28 +2836,29 @@ nodes:
 
   - id: "surface.off-peak-home-template-carousel"
     kind: "ui-surface"
-    label: "New Task Off-Peak template carousel"
-    codeSeeds:
-      - symbol: "OffPeakNewTaskEntry"
-        file: "packages/ui/src/v4/OffPeakNewTaskEntry.tsx"
+    status: "removed"
+    label: "[Removed] New Task Off-Peak template carousel"
+    docs:
+      - "docs/superpowers/specs/2026-11-19-offpeak-retirement-contract.md"
+    codeSeeds: [] # OffPeakNewTaskEntry.tsx 已随闲时创建入口退役删除。
 
   - id: "surface.off-peak-creation"
     kind: "ui-surface"
-    label: "Off-Peak creation entries and result reporting"
-    codeSeeds:
-      - symbol: "OffPeakNewTaskEntry"
-        file: "packages/ui/src/v4/OffPeakNewTaskEntry.tsx"
-      - symbol: "handleOffPeakSubmit"
-        file: "packages/ui/src/settings/AutomationsSection.tsx"
+    status: "removed"
+    label: "[Removed] Off-Peak creation entries and result reporting"
+    aliases:
+      - "OffPeakCreate"
+    docs:
+      - "docs/superpowers/specs/2026-11-19-offpeak-retirement-contract.md"
+    codeSeeds: [] # OffPeakNewTaskEntry.tsx 与 handleOffPeakSubmit 已删除；CLI OffPeakCreate 不再注册，OffPeakList 只读保留。
 
   - id: "surface.off-peak-upgrade"
     kind: "ui-surface"
-    label: "Off-Peak Coding Plan upgrade entries"
-    codeSeeds:
-      - symbol: "OffPeakNewTaskEntry"
-        file: "packages/ui/src/v4/OffPeakNewTaskEntry.tsx"
-      - symbol: "handleOpenCodingPlanUpgrade"
-        file: "packages/ui/src/settings/AutomationsSection.tsx"
+    status: "removed"
+    label: "[Removed] Off-Peak Coding Plan upgrade entries"
+    docs:
+      - "docs/superpowers/specs/2026-11-19-offpeak-retirement-contract.md"
+    codeSeeds: [] # OffPeakNewTaskEntry.tsx 与 handleOpenCodingPlanUpgrade 已删除；升级入口随闲时创建退役。
 
   - id: "surface.conversation-automation-tools"
     kind: "ui-surface"
@@ -3560,13 +3563,14 @@ nodes:
 
   - id: "service.off-peak-task"
     kind: "service"
-    label: "Off-Peak ticket and local task creation boundary"
+    label: "Off-Peak ticket boundary with retired local task creation"
     codeSeeds:
       - symbol: "OffPeakTaskService"
         file: "packages/services/src/session/offPeakTaskService.ts"
       - symbol: "useOffPeakTaskStore"
         file: "packages/ui/src/store/offPeakTaskStore.ts"
     invariants:
+      - "Retired 2026-11-19 (docs/superpowers/specs/2026-11-19-offpeak-retirement-contract.md): createTask/getTakeNumberAvailability return local off_peak_retired / canTakeNumber:false without network or persistence; continueTask/updateTask/pauseTask throw off_peak_retired; list/get stay readable with schedulable:false. Resident execution is contract design limited to original-owner cancellation/completion; live-path residency is not verified here."
       - "Provider start only waits for readiness; off-peak credentials explicitly read the latest completed Registry snapshot."
       - "Initialization, connection changes, completed Registry notifications and manual refresh share serialized eligibility checks; support and availability publish together only for the latest generation."
 

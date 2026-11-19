@@ -13,6 +13,10 @@
 
 ZCode is an AI coding workspace with desktop, browser, and terminal interfaces. This repository contains the clients, backend services, shared UI, and Agent CLI and runtime source code.
 
+Official OAuth login, existing personal and team account models, and actual entitlement and usage quota queries remain available. In-app purchase and renewal transactions and active claims of marketing rewards or lottery draws are no longer offered. Removing the in-app renewal entry does not cancel a server-side subscription on the user's behalf.
+
+Idle-time tasks have been retired: new tasks are not accepted and pending tasks are no longer dispatched. Historical records remain; their status is the last local observation, not confirmation of cloud cancellation. An existing execution confirmed by its original owner can still finish or be cancelled. Regular scheduled tasks are outside the scope of this retirement.
+
 ## Updates
 
 - **2026-11-12**: Updated to ZCode v3.18.2.

@@ -671,6 +671,16 @@ SendMessage 运行中投递/终态恢复，以及 Bash 显式/超时后台复用
 Workflow、递归闲时/定时任务和自动记忆提取的限制保留；重启不恢复后台进程或通知。
 验证覆盖换票并发、旧票迟到、用户接管、停止与任务取消、后台通知到达边界及两端交互。
 
+## OffPeakCreate 注册退役（2026-11-19）
+
+商业服务拆除 C 阶段（docs/superpowers/specs/2026-11-19-offpeak-retirement-contract.md）：`builtInTools`
+移除 `offPeakCreateToolEntry`，`includeOffPeak` 装配门只作用于只读 `OffPeakList`。模型面 tools 段不再包含
+OffPeakCreate（升级后首个请求缓存失效一次）；`OffPeakCreate` 的 handler/entry 与 `OFF_PEAK_MUTATION_TOOL_NAMES`
+denylist 常量本阶段保留，供历史回归与闲时派发轮纵深防御，死代码清理归阶段 D。旧 transcript 的
+offpeak-create 工具结果继续由 App 既有渲染器读取；Host 侧 `offPeak/create` 协议保留并透传服务层
+`off_peak_retired` 稳定分类，防御旧客户端。回归：`packages/core/tests/off-peak-tool.test.ts` 注册断言
+（includeOffPeak=true 时 OffPeakCreate 缺席、OffPeakList 在场）。
+
 ## 冷打开历史先显示（2026-10-09）
 
 持久化 tool 摘要由现有 V4 reducer 在 runtime 初始化前显示；工具详情、附件读取、App 交互

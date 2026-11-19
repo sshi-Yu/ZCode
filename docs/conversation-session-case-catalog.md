@@ -3764,6 +3764,8 @@ grep；`rg` 只选一个代表命令证明两种开关状态一致。
 
 来源：`docs/off-peak-task/spec.md`（D1–D33 定案）。闲时任务是 Automations 体系下的一次性后台任务：表单创建即取号排队，服务端 ready 后派发新建 session 无人值守执行（idle plan per-turn 注入，D33），3h 时间盒自动续跑（D26）。E2E 由进程内 mock 网关驱动（`ZCODE_OFFPEAK_MOCK=1`，工序 3 交付），属桌面 `desktop-continuous` 链路，不据此推断手机 replayable 语义。
 
+> **2026-11-19 退役修订：** 闲时创建/续跑已按 [退役契约](superpowers/specs/2026-11-19-offpeak-retirement-contract.md) 本地拒绝（`off_peak_retired`，无网络、不落库），CLI 不再注册 `OffPeakCreate`，仅 `OffPeakList` 只读、历史渲染与驻留执行按原 owner 收尾保留。本组 case 与下方 accepted 行为退役前历史口径，不再作为现行创建路径验收；现行退役验收见 [personal-workbench-commercial-retirement-e2e](testing/personal-workbench-commercial-retirement-e2e.md)。
+
 等价类：
 
 | 维度          | 等价类                                                                                                |
@@ -3879,6 +3881,8 @@ accelerated commandId -> userInput + assistant/output rows share one Highspeed m
 | HS-E2E-05 | Coding Plan 用户、Highspeed 卡返回目录外模型 | 当前 Turn 创建加速模型失败 | 自动切回原模型并正常完成；输入框退出 Highspeed、模型选择器解锁、只显示一次降级 Toast | accepted |
 | HS-E2E-06 | Highspeed Turn 运行中，下一条输入携带同一张卡入队 | 撤回队列输入到 Composer，修改后重新发送 | Composer 恢复队列项原普通 Coding Plan 模型；重发继续入队；不得把临时 Highspeed Provider 写入 Composer、Session 或错误提示 | accepted |
 | HS-E2E-04 | Coding Plan 用户、Highspeed 与退回目标同时不在 Worker Registry | 用户提交当前 Turn | ACK 前拒绝；输入正文恢复；作废卡并退出 Highspeed；模型选择器解锁；不显示错误 Banner | accepted |
+
+> **2026-11-19 退役修订（新抽卡）：** 个人工作台商业服务拆除后新 draw 已退役：无当前有效卡时不再发起抽卡，直接按 unavailable 降级；已激活卡的合法使用、鉴权与到期仍按原合同（上位设计 [personal-workbench-commercial-services-design](superpowers/specs/2026-11-19-personal-workbench-commercial-services-design.md)）。HS01/HS02/HS05/HS-E2E-01 等依赖 fresh draw 的行为为退役前 accepted 历史；持卡路径（HS04/HS09/HS10、HS-E2E-04/05/06/07）语义不变。最新无卡桌面回放在 Team 模型选择步骤失败，不据此声称桌面通过；现行退役验收见 [personal-workbench-commercial-retirement-e2e](testing/personal-workbench-commercial-retirement-e2e.md)。
 
 ## PDF. Composer PDF 附件
 
@@ -4397,6 +4401,8 @@ VP-ROOT-01 Windows 暂时跳过（2026-11-04）：Agent 进程以项目主目录
 | SCB03 | 灰度关闭/失败时模型调用 OffPeakCreate                      | 稳定失败，无 createTask/取号副作用；正常配置仍可创建                             | accepted / Host 集成测试 + 既有闲时 E2E           |
 | SCB04 | 兼容 legacy、配置缺失/失败/永不返回                        | budget 无 IO；Runtime、日志、子 Agent 为 preflight-v1；128K/64K 的 threshold=94K | accepted / 单测 + OTB 回归                        |
 | SCB05 | desktop continuous 与 mobile replayable / remote workspace | shared-host、identity 与 scope 不变；remote 不注册闲时工具，预算不联网           | accepted / 协议与 remote Host 单测                |
+
+> **2026-11-19 退役修订：** `OffPeakCreate` 已从 CLI 工具注册移除（模型不可再调用），`OffPeakList` 只读保留。SCB01 的「工具含 OffPeakCreate/List」与 SCB03 的「正常配置仍可创建」为退役前历史口径；现行合同见 [退役契约](superpowers/specs/2026-11-19-offpeak-retirement-contract.md)，验收见 [personal-workbench-commercial-retirement-e2e](testing/personal-workbench-commercial-retirement-e2e.md)。
 
 新 case：`conversation-session-config-independent-startup.test.ts` 位于 manual-review/pending；
 provider fixture 使用同名 canonical formal target。配置网关不能启用 ZCODE_OFFPEAK_MOCK 绕过真实读取。

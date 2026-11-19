@@ -6,8 +6,12 @@
 
 > **后台生命周期修订：** 本次实现边界与验证进度见 [实施计划](./background-lifecycle-plan.md)。D51/D52 的后台与 SendMessage 限制由下述生命周期取代；历史决定保留在 decisions.md。
 
-> **状态：已实现，持续按 Figma 收口。** 当前仓库已包含 `offPeak` 领域类型、repo、service、
-> scheduler、UI 与进程内 mock；本文记录当前产品语义与实现约束。
+> **状态（2026-11-19 起）：创建/续跑已退役，本文正文保留为退役前产品语义记录。** 个人工作台商业服务拆除后，
+> `createTask`/取号/`continueTask`/`updateTask`/`pauseTask` 一律本地拒绝（`off_peak_retired`，无网络、不落库），
+> CLI 不再注册 `OffPeakCreate`；仅 `list`/`get` 只读、历史渲染、本地删除与驻留执行按原 owner 收尾保留。
+> 现行规则以 [退役契约](../superpowers/specs/2026-11-19-offpeak-retirement-contract.md) 为准，
+> 验收证据见 [personal-workbench-commercial-retirement-e2e](../testing/personal-workbench-commercial-retirement-e2e.md)。
+> 下文「已实现」描述与 D1–D40 决策均为退役前历史口径，不再描述当前行为。
 >
 > **2026-08-22 Provider Config 收口：** `client/configs.offPeak` 只保留
 > `enable_offpeak_task` 曝光开关；模型成员来自 Built-in `builtin:offpeak-idle-plan`，模型能力来自
