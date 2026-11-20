@@ -70,6 +70,7 @@ import {
   retryBudgetAllows,
   retryBudgetMaxAttempts,
 } from "./retry-budget.js";
+import { isNoRedispatchRequest } from "./redispatch-policy.js";
 
 export async function runGenerateText(input: {
   debugDir?: string;
@@ -86,8 +87,11 @@ export async function runGenerateText(input: {
   // 重试预算档位：workflow actor 的请求带 unbounded，
   // 只放宽瞬态失败的放弃条件；状态事件里的 maxAttempts 以 0 表示无上限。
   const retryBudget = input.request.modelRetryBudget;
+  // no-redispatch（轮尾生成等「一次受理最多一次物理请求」的能力）：鉴权刷新、签名修复、
+  // off-peak 排队与空补全重试全部禁止，首次失败即上抛，由调用方按 errorPhase 归因。
+  const noRedispatch = isNoRedispatchRequest(input.request);
   const statusMaxAttempts = (extraAttempts: number): number =>
-    retryBudgetMaxAttempts(retryBudget, input.retry.maxAttempts + extraAttempts);
+    noRedispatch ? 1 : retryBudgetMaxAttempts(retryBudget, input.retry.maxAttempts + extraAttempts);
   const baseStatusContext = createStatusContext({
     maxAttempts: statusMaxAttempts(0),
     request: input.request,
@@ -106,11 +110,13 @@ export async function runGenerateText(input: {
 
   for (
     let attempt = 1;
-    retryAttemptLoopContinues(
-      retryBudget,
-      attempt,
-      input.retry.maxAttempts + Number(signatureRepairAttempted) + authRetry.extraAttempts,
-    );
+    noRedispatch
+      ? attempt === 1
+      : retryAttemptLoopContinues(
+          retryBudget,
+          attempt,
+          input.retry.maxAttempts + Number(signatureRepairAttempted) + authRetry.extraAttempts,
+        );
     attempt += 1
   ) {
     const retryBudgetAttempt = attempt - Number(signatureRepairAttempted) - authRetry.extraAttempts;
@@ -203,6 +209,8 @@ export async function runGenerateText(input: {
       // 部分非流式 provider/fetch 兼容层收到 AbortSignal 后不会及时 settle
       // generateText promise，导致 runtime 已 Stop，goal verifier 仍要等上游自然返回才收口。
       // adapter 是本地取消契约边界：signal 一旦 abort 就立即拒绝，迟到 provider 结果只丢弃。
+      // 轮尾 deadline 可能在异步鉴权、准入或状态发布期间触发；取消后不得迟到派发。
+      if (noRedispatch) input.request.abortSignal?.throwIfAborted();
       const pendingResult = input.runtime.generateText(options);
       // options 构造成功不等于 runtime 已接受请求；同步 setup 异常会在调用点直接抛出。
       // 只有 generateText 调用返回 pending promise 后才进入 response 归因边界，避免把本地 setup 记成 provider。
@@ -251,6 +259,8 @@ export async function runGenerateText(input: {
       );
       if (
         input.request.preserveProviderStreamBoundaries !== true &&
+        // no-redispatch：空补全重试会追加第二次物理请求，禁止。
+        !noRedispatch &&
         isZeroOutputModelCompletion({
           finishReason: result.finishReason,
           rawFinishReason:
@@ -387,7 +397,8 @@ export async function runGenerateText(input: {
               retryable: false,
               message: offPeakTicketExpiredMessage(classified.message),
             }
-          : offPeak?.kind === "queued"
+          : // no-redispatch：off-peak 排队不豁免预算、不再无限探测，按原始分类收口。
+            offPeak?.kind === "queued" && !noRedispatch
             ? { ...classified, retryable: true, retryReason: ModelRetryReason.OffpeakQueued }
             : classified;
       const providerCode = inspectProviderFailure(error).providerErrorCode;
@@ -399,8 +410,11 @@ export async function runGenerateText(input: {
       const responseHeaders = sanitizeModelNetworkHeaders(
         getResponseHeaders(unwrapRetryError(error)),
       );
+      // no-redispatch：签名修复会追加一次不占预算的物理请求，禁止。
       const repairedMessages =
-        !signatureRepairAttempted && resolved.providerKind === "anthropic"
+        !noRedispatch &&
+        !signatureRepairAttempted &&
+        resolved.providerKind === "anthropic"
           ? repairReasoningHistoryAfterSignatureRejection(requestMessages, error)
           : undefined;
       const retryWithRepairedHistory = repairedMessages !== undefined;
@@ -416,12 +430,13 @@ export async function runGenerateText(input: {
         };
       }
       const canRetryWithFailurePolicy =
-        offPeak?.kind === "queued"
+        offPeak?.kind === "queued" && !noRedispatch
           ? true
           : retryBudgetAllows(retryBudget, retryBudgetAttempt, input.retry.maxAttempts) &&
             // workflow 流量（无上限预算）读策略表而不是分类器的 retryable；有界预算逐字不变。
             retryAllowedByFailurePolicy(failure, retryBudget, providerCode, unrecognizedCodeStreak);
-      const retryWithAuth = authRetry.claim(error, options === undefined);
+      // no-redispatch：鉴权刷新重试同样会追加物理请求，禁止。
+      const retryWithAuth = !noRedispatch && authRetry.claim(error, options === undefined);
       if (retryWithAuth)
         statusContext = {
           ...statusContext,
@@ -429,7 +444,8 @@ export async function runGenerateText(input: {
             Number(signatureRepairAttempted) + authRetry.extraAttempts,
           ),
         };
-      const canRetry = retryWithAuth || retryWithRepairedHistory || canRetryWithFailurePolicy;
+      const canRetry =
+        !noRedispatch && (retryWithAuth || retryWithRepairedHistory || canRetryWithFailurePolicy);
 
       if (options) {
         recordGenerateTextDebug({

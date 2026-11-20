@@ -1,5 +1,6 @@
 import type { AgentRuntimeInternal } from "../internal.js";
 import { sampleModel } from "./sample-model.js";
+import { generateTurnFooterText } from "./turn-footer-generate.js";
 import { grantPermissionMode } from "../permission-full-access.js";
 import {
   getSessionShellSelection,
@@ -415,6 +416,7 @@ export function installAgentRuntimeMethods(ctor: AgentRuntimeConstructor): void 
   proto.rebuildProjection = rebuildProjection;
   proto.generateWorkspaceText = generateWorkspaceText;
   proto.sampleModel = sampleModel;
+  proto.generateTurnFooterText = generateTurnFooterText;
   proto.drainMemoryExtractions = drainMemoryExtractions;
   proto.isProjectMemoryEnabled = isProjectMemoryEnabled;
 }

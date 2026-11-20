@@ -30,6 +30,14 @@ import {
 
 const EMPTY_STORE = createStore<ExtensionGrantsState>(() => ({ snapshot: null }));
 
+const GRANT_LABEL_IDS: Record<ExtensionGrant, string> = {
+  "sessions.read": "extensions.grants.tier.sessions.read",
+  "sessions.write": "extensions.grants.tier.sessions.write",
+  "sessions.fullAccess": "extensions.grants.tier.sessions.fullAccess",
+  notifications: "extensions.grants.tier.notifications",
+  "turnFooter.generate": "extensions.grants.tier.turnFooter.generate",
+};
+
 export function useExtensionGrantsService(): IExtensionGrantsService | null {
   return useOptionalBaseWorkspaceServices()?.extensionGrantsService ?? null;
 }
@@ -55,7 +63,7 @@ export function useFormatGrants(): (grants: readonly ExtensionGrant[]) => string
   return useCallback(
     (grants) =>
       new Intl.ListFormat(locale, { type: "conjunction" }).format(
-        grants.map((grant) => intl.formatMessage({ id: `extensions.grants.tier.${grant}` })),
+        grants.map((grant) => intl.formatMessage({ id: GRANT_LABEL_IDS[grant] })),
       ),
     [intl, locale],
   );
@@ -78,12 +86,15 @@ export function useRequestExtensionGrant():
       const writes = fullAccess || state.declared.includes("sessions.write");
       const sessions = state.declared.some(isSessionGrant);
       const notifications = state.declared.includes("notifications");
-      // 标题按会话档位；只申请通知时用通知标题。正文：会话档位的原文，申请了完全访问时单独写一行（§17.12），
-      // 申请了通知时再加一段通知说明（§18.1 H8）。
+      const turnFooter = state.declared.includes("turnFooter.generate");
+      // 独立模型请求单独授权，不能把 sessions.read 的说明当作额度消耗许可。
       const description = [
         ...(sessions ? [intl.formatMessage({ id: "extensions.grants.dialog.body" })] : []),
         ...(fullAccess
           ? [intl.formatMessage({ id: "extensions.grants.dialog.fullAccessBody" })]
+          : []),
+        ...(turnFooter
+          ? [intl.formatMessage({ id: "extensions.grants.dialog.turnFooterBody" })]
           : []),
         ...(notifications
           ? [intl.formatMessage({ id: "extensions.grants.dialog.notificationsBody" })]
@@ -96,7 +107,9 @@ export function useRequestExtensionGrant():
               ? "extensions.grants.dialog.titleWrite"
               : sessions
                 ? "extensions.grants.dialog.titleRead"
-                : "extensions.grants.dialog.titleNotifications",
+                : turnFooter
+                  ? "extensions.grants.dialog.titleTurnFooter"
+                  : "extensions.grants.dialog.titleNotifications",
           },
           { plugin: state.name },
         ),

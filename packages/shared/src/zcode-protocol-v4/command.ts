@@ -1,3 +1,4 @@
+import { turnFooterAnchorSchema } from "./turn-footer.js";
 import { genUiModelContextSchema } from "../gen-ui/contract.js";
 import { createSessionRequestedConfigSchema } from "./create-session-config.js";
 import { localTtftContextSchema, localTtftClockSchema } from "../local-ttft/contract.js";
@@ -142,6 +143,8 @@ export const commandPayloadSchemas = {
   sendText: z
     .object({
       text: z.string(),
+      // 轮尾输入只沿原生 sendText；必须在 CommandInbox 串行准入时再次匹配持久回复。
+      expectedTurnFooterAnchor: turnFooterAnchorSchema.optional(),
       attachments: z.array(attachmentRefSchema).optional(),
       // Desktop Cmd/Ctrl+Enter 只覆盖本次 busy input，不改 session followupMode。
       // startNow 由 CLI 原子抢占当前 turn，不经过 queue admission。

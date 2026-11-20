@@ -886,6 +886,10 @@ export interface AgentRuntime {
     input: import("./methods/sample-model.js").SampleModelInput,
     options: { abortSignal: AbortSignal; traceContext?: TraceContext },
   ): Promise<import("@zcode/shared/mcp-apps").McpAppsSamplingResult>;
+  generateTurnFooterText(
+    input: import("./methods/turn-footer-generate.js").GenerateTurnFooterTextInput,
+    options?: { abortSignal?: AbortSignal; traceContext?: TraceContext },
+  ): Promise<import("@zcode/shared/extension-host").TurnFooterGenerateResult>;
   generateWorkspaceText(
     input: WorkspaceGenerateTextInput,
     options?: { abortSignal?: AbortSignal; traceContext?: TraceContext },

@@ -1,0 +1,112 @@
+{
+  "version": 1,
+  "caseName": "plugin-management-nextstep-turn-footer",
+  "spec": "./test/e2e/plugins/extensions/plugin-management-nextstep-turn-footer.test.ts",
+  "fixtures": [
+    {
+      "id": "plugin-management-nextstep-turn-footer-title",
+      "description": "本用例会话标题的固定响应；标题不属于本用例断言。",
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": ["Generate a concise title", "E2E_NEXTSTEP_TURNFOOTER"]
+      },
+      "response": {
+        "statusCode": 200,
+        "statusMessage": "OK",
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": "{\"id\":\"nextstep-e2e-title-fixture\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"deepseek-v4-flash\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"title\\\":\\\"NextStep E2E Fixture\\\"}\"}],\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"usage\":{\"input_tokens\":125,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":24,\"service_tier\":\"standard\"}}"
+      },
+      "metadata": {
+        "kind": "common",
+        "source": "synthetic",
+        "timingPolicy": "fast-text",
+        "note": "会话标题辅助响应；按本用例 prompt marker 限定匹配。",
+        "syntheticReason": "标题不属于本用例断言；按专属 prompt marker 匹配的固定响应，避免后台标题请求消耗主业务响应。"
+      }
+    },
+    {
+      "id": "plugin-management-nextstep-turn-footer-generate-1",
+      "description": "第 1 次独立轮尾生成：五个候选，包含补充字符与同长度项。",
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": ["E2E_NEXTSTEP_TURNFOOTER", "Recommend useful next steps for the user"]
+      },
+      "response": {
+        "statusCode": 200,
+        "statusMessage": "OK",
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": "{\"id\":\"plugin-management-nextstep-turn-footer-generate-1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"deepseek-v4-flash\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"items\\\":[{\\\"dimension\\\":\\\"review\\\",\\\"label\\\":\\\"复核输入\\\",\\\"prompt\\\":\\\"Review the completed turn.\\\"},{\\\"dimension\\\":\\\"test\\\",\\\"label\\\":\\\"😀审查\\\",\\\"prompt\\\":\\\"Test the result.\\\"},{\\\"dimension\\\":\\\"deepen\\\",\\\"label\\\":\\\"深化\\\",\\\"prompt\\\":\\\"Deepen the result.\\\"},{\\\"dimension\\\":\\\"extend\\\",\\\"label\\\":\\\"补充测试\\\",\\\"prompt\\\":\\\"Extend the tests.\\\"},{\\\"dimension\\\":\\\"implement\\\",\\\"label\\\":\\\"验证这轮改动是否可靠\\\",\\\"prompt\\\":\\\"Verify the changes.\\\"}]}\"}],\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"usage\":{\"input_tokens\":120,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":96}}"
+      },
+      "metadata": {
+        "kind": "main",
+        "source": "synthetic",
+        "timingPolicy": "fast-text",
+        "note": "轮尾生成 v1 的建议数组；maxMatches=1 使重复生成直接暴露为 Missing Fixture。",
+        "syntheticReason": "固定五个候选用于断言 Unicode 码点排序、同长稳定顺序、截断至四条及调用次数；不是线上模型输出。"
+      }
+    },
+    {
+      "id": "plugin-management-nextstep-turn-footer-generate-2",
+      "description": "第 2 次独立轮尾生成（手动刷新 v2）：2 条建议。",
+      "maxMatches": 1,
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": ["E2E_NEXTSTEP_TURNFOOTER", "Recommend useful next steps for the user"]
+      },
+      "response": {
+        "statusCode": 200,
+        "statusMessage": "OK",
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": "{\"id\":\"plugin-management-nextstep-turn-footer-generate-2\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"deepseek-v4-flash\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"items\\\":[{\\\"dimension\\\":\\\"deepen\\\",\\\"label\\\":\\\"nextstep suggestion v2 deepen\\\",\\\"prompt\\\":\\\"Deepen the newest answer with concrete evidence.\\\"},{\\\"dimension\\\":\\\"followup\\\",\\\"label\\\":\\\"nextstep suggestion v2 followup\\\",\\\"prompt\\\":\\\"Ask the next follow-up question for this thread.\\\"}]}\"}],\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"usage\":{\"input_tokens\":120,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":96}}"
+      },
+      "metadata": {
+        "kind": "main",
+        "source": "synthetic",
+        "timingPolicy": "fast-text",
+        "note": "轮尾生成 v2 的建议数组；与 v1 数量和标签不同，用于断言刷新产生新版本。",
+        "syntheticReason": "建议内容为验收合同的可计数已知响应，用于断言刷新后的第二已知响应与恰好两次唯一生成；不是线上模型输出。"
+      }
+    },
+    {
+      "id": "plugin-management-nextstep-turn-footer-main",
+      "description": "主对话回复：固定文本 nextstep-e2e-ok。",
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": ["E2E_NEXTSTEP_TURNFOOTER"],
+        "bodyExcludes": [
+          "Generate a concise title",
+          "CRITICAL: Respond with TEXT ONLY",
+          "Recommend useful next steps for the user"
+        ],
+        "lastUserMessageIncludes": ["E2E_NEXTSTEP_TURNFOOTER"]
+      },
+      "response": {
+        "statusCode": 200,
+        "statusMessage": "OK",
+        "headers": {
+          "cache-control": "no-cache",
+          "content-type": "text/event-stream; charset=utf-8"
+        },
+        "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"nextstep-e2e-main\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"deepseek-v4-flash\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":120,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0,\"service_tier\":\"standard\"}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"nextstep-e2e-ok\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":120,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":12,\"service_tier\":\"standard\"}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+      },
+      "metadata": {
+        "kind": "main",
+        "source": "synthetic",
+        "timingPolicy": "fast-text",
+        "note": "主对话成功回复；排除生成请求与标题请求的 marker，保证轮尾生成请求不会误配主回复。",
+        "syntheticReason": "回复内容为验收合同的固定已知文本；轮尾触发依赖该轮成功收口，内容必须确定可断言。"
+      }
+    }
+  ]
+}

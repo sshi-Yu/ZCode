@@ -505,6 +505,40 @@ function ConversationTimelineImpl({
     [renderUnits.history],
   );
   const hasRunningUnit = historyHasRunningUnit || renderUnits.tail.some((unit) => unit.isRunning);
+  const turnFooterTarget = useMemo(() => {
+    if (!rowContext.turnFooterEnabled) return null;
+    let submissionBlocked = false;
+    // 只按 CLI 的成功用户轮事实选展示位置；辅助、控制和失败轮不能成为候选。
+    for (const partition of [renderUnits.tail, renderUnits.history]) {
+      for (let index = partition.length - 1; index >= 0; index -= 1) {
+        const unit = partition[index]!;
+        const header = unit.header;
+        if (header?.origin !== "userInput" && header?.origin !== "editRerun") continue;
+        if (unit.isRunning) submissionBlocked = true;
+        const row = unit.latestAssistantTextRow;
+        if (
+          header.state !== "completedSuccess" ||
+          header.executionKind === "controlOnly" ||
+          unit.timelineOnly ||
+          row?.state !== "complete" ||
+          !row.productTurnId ||
+          !row.text.trim()
+        )
+          continue;
+        return { rowId: row.rowId, submissionBlocked };
+      }
+    }
+    return null;
+  }, [renderUnits, rowContext.turnFooterEnabled]);
+  const turnFooterRowId = turnFooterTarget?.rowId;
+  const turnFooterSubmissionBlocked = turnFooterTarget?.submissionBlocked;
+  const turnFooterContext = useMemo<ConversationRowRenderContext>(
+    () =>
+      turnFooterRowId === undefined
+        ? rowContext
+        : { ...rowContext, turnFooterRowId, turnFooterSubmissionBlocked },
+    [rowContext, turnFooterRowId, turnFooterSubmissionBlocked],
+  );
   const latestTurnSummary = useMemo(
     () =>
       resolveConversationLatestTurnSummary(
@@ -2137,7 +2171,7 @@ function ConversationTimelineImpl({
                         unit={unit}
                         nowMs={unit.isRunning ? liveNowMs : undefined}
                         apiRetry={null}
-                        context={rowContext}
+                        context={turnFooterContext}
                         onFork={onFork}
                         onRetry={onRetry}
                         onFeedbackChange={onFeedbackChange}
@@ -2171,7 +2205,7 @@ function ConversationTimelineImpl({
                     unit={liveUnit}
                     nowMs={liveUnit.isRunning ? liveNowMs : undefined}
                     apiRetry={apiRetry}
-                    context={rowContext}
+                    context={turnFooterContext}
                     onFork={onFork}
                     onRetry={onRetry}
                     onFeedbackChange={onFeedbackChange}

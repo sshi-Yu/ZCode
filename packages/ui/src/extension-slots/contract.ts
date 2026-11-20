@@ -58,6 +58,8 @@ export interface ComposerMentionGroup {
   errorCode?: string;
 }
 
+export type { TurnFooterSlotModel, TurnFooterSlotProps } from "./turnFooterContract.js";
+
 export interface ComposerStatusSlotProps {
   workspacePath: string | null | undefined;
   workspaceIdentity?: string | null;

@@ -21,8 +21,11 @@ export type {
   OpenExtensionLogs,
   OpenExtensionView,
   StartExtensionDraft,
+  TurnFooterSlotModel,
+  TurnFooterSlotProps,
   WorkbenchPaneReport,
 } from "@/extension-slots/contract.js";
+export { TurnFooterSlot } from "@/extension-slots/components/TurnFooterSlot.js";
 export { ComposerStatusSlot } from "@/extension-slots/components/ComposerStatusSlot.js";
 export { ExtensionLauncherSection } from "@/extension-slots/components/ExtensionLauncherSection.js";
 export { ExtensionViewPane } from "@/extension-slots/components/ExtensionViewPane.js";

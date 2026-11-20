@@ -3199,6 +3199,14 @@ export function SessionPane({
       sessionId,
       rootSessionId: rootSessionId ?? sessionId,
       compactForRemoteControl,
+      turnFooterEnabled:
+        runtimeReady &&
+        !readOnly &&
+        !selectionSideChat &&
+        !rootSessionId &&
+        !compactForRemoteControl &&
+        !remoteSessionId &&
+        !isRemoteWorkspaceIdentity(workspaceIdentity ?? ""),
       chatLoadingBlockedByActiveWork,
       chatLoadingBlockedByInteraction,
       messageStreamShowReasoning,
@@ -3299,6 +3307,7 @@ export function SessionPane({
       onOpenWorkflowArtifact,
       handleOpenWorkflowArtifact,
       readOnly,
+      selectionSideChat,
       runtimeReady,
       handleCancelBackgroundWork,
       dynamicWorkflowEnabled,

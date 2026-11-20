@@ -14,6 +14,7 @@ export * from "#src/extension-host/models.js";
 export * from "#src/extension-host/notifications.js";
 export * from "#src/extension-host/views.js";
 export * from "#src/extension-host/mention.js";
+export * from "#src/extension-host/turnFooter.js";
 export * from "#src/extension-host/settings.js";
 export * from "#src/extension-host/sessions.js";
 export * from "#src/extension-host/sessionActions.js";

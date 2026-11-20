@@ -7,6 +7,7 @@ import { BotTopicPreparation } from "@/v4/BotTopicPreparation.js";
 import { useBotTopicInterruption } from "@/v4/botGroupDeliveryContext.js";
 import { ConnectedBotGroupDeliveryAction } from "@/v4/BotGroupDeliveryAction.js";
 /* eslint-disable max-lines -- turn group 需要在同一处维护普通 assistant 与后台结果的严格行序，拆分会重复 actions/preview/tail 协议。 */
+import { TurnFooterSlot } from "@/extension-slots/index.js";
 import { useIsOfficeMode } from "@/hooks/useInterfaceMode.js";
 import {
   Fragment,
@@ -1541,6 +1542,25 @@ function ConversationTurnGroupImpl({
                   sourceCommandIds={deliverySourceCommandIds}
                 />
               </MessageActions>
+            ) : null}
+            {canRenderAssistantActions &&
+            context.turnFooterEnabled &&
+            context.sessionId &&
+            latestAssistantTextRow?.productTurnId &&
+            latestAssistantTextRow.rowId === context.turnFooterRowId ? (
+              <TurnFooterSlot
+                key={`${context.sessionId}:${latestAssistantTextRow.productTurnId}:${latestAssistantTextRow.rowId}`}
+                target={{
+                  workspacePath: context.workspacePath,
+                  ...(context.workspaceIdentity
+                    ? { workspaceIdentity: context.workspaceIdentity }
+                    : {}),
+                  sessionId: context.sessionId,
+                  rowId: latestAssistantTextRow.rowId,
+                }}
+                productTurnId={latestAssistantTextRow.productTurnId}
+                submissionBlocked={context.turnFooterSubmissionBlocked === true}
+              />
             ) : null}
             {showHighspeedOutputFooter ? (
               <HighspeedOutputFooter

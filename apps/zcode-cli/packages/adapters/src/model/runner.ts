@@ -33,6 +33,7 @@ import {
   type ResolvedAiSdkModelRetryOptions,
 } from "./retry-policy.js";
 import { resolveRetryOptionsForBudget } from "./retry-budget.js";
+import { resolveRetryOptionsForRequest } from "./redispatch-policy.js";
 import { DEFAULT_MODEL_STREAM_IDLE_TIMEOUT_MS } from "./stream-idle-timeout.js";
 import { runGenerateText } from "./runner-generate.js";
 import { runStreamText } from "./runner-stream.js";
@@ -337,7 +338,8 @@ export class AiSdkModelAdapter {
       request: projectedRequest,
       resolveModel,
       resolved,
-      retry: resolveRetryOptionsForBudget(this.retry, projectedRequest.modelRetryBudget),
+      // no-redispatch 策略（轮尾生成等单次派发能力）隐含 single-attempt；其余按预算档位。
+      retry: resolveRetryOptionsForRequest(this.retry, projectedRequest),
       runtime: this.runtime,
       statusSink: this.statusSink,
       modelIoFullRetentionEnabled: this.modelIoFullRetentionEnabled,

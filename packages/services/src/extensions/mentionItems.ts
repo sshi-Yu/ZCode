@@ -27,6 +27,8 @@ export interface MentionItemsRouterDeps {
   /** 当前代际的扩展进程连接；没有时为 null。 */
   connection(): { gen: number; host: IExtensionHostChannel } | null;
   agent: Pick<IZCodeAgentService, "getPluginMentionItems">;
+  /** 与其他插槽共用命令时，仍不得绕过受限轮尾入口。 */
+  assertCommand(commandId: string): void;
   logger: Pick<ServiceLogger, "debug" | "warn">;
 }
 
@@ -75,6 +77,7 @@ export function createMentionItemsRouter(
     if (!target) return fail(input.seq, MENTION_ITEMS_ERROR_CODES.hostUnavailable);
     let value: unknown;
     try {
+      deps.assertCommand(item.target.id);
       value = await target.host.executeCommand({
         commandId: item.target.id,
         scope: input.scope,

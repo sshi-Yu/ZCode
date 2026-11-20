@@ -624,6 +624,11 @@ function PluginStoreExtensionNotice({ item }: { item: StorePluginItem }) {
           ))}
         </ul>
       )}
+      {known.includes("turnFooter.generate") ? (
+        <p className="mt-3 text-ui-base text-foreground-subtle">
+          {intl.formatMessage({ id: "extensions.grants.dialog.turnFooterBody" })}
+        </p>
+      ) : null}
       {fullAccess ? (
         <p
           data-testid="plugin-store-extension-full-access"

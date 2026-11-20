@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "caseName": "plugin-management-nextstep-turn-footer",
+  "spec": "./test/e2e/plugins/extensions/plugin-management-nextstep-turn-footer.test.ts",
+  "fileFixtures": ["../../plugins/nextstep"],
+  "providerFixtures": [
+    "./test/e2e/fixtures/upstream/common.json",
+    "./test/e2e/fixtures/upstream/plugin-management/plugin-management-nextstep-turn-footer.json"
+  ],
+  "requests": [
+    {
+      "id": "plugin-management-nextstep-turn-footer-title",
+      "kind": "common",
+      "source": "synthetic",
+      "timingPolicy": "fast-text",
+      "note": "会话标题辅助响应；标题不属于本用例断言。",
+      "syntheticReason": "标题不属于本用例断言；按专属 prompt marker 匹配的固定响应，避免后台标题请求消耗主业务响应。"
+    },
+    {
+      "id": "plugin-management-nextstep-turn-footer-generate-1",
+      "kind": "main",
+      "source": "synthetic",
+      "timingPolicy": "fast-text",
+      "note": "轮尾自动生成 v1：五个候选按 Unicode 码点稳定排序并保留四条；maxMatches=1 让重复生成直接失败。",
+      "syntheticReason": "建议数组是可计数已知响应，验证排序、截断与恰好一次自动生成；不是线上模型输出。"
+    },
+    {
+      "id": "plugin-management-nextstep-turn-footer-generate-2",
+      "kind": "main",
+      "source": "synthetic",
+      "timingPolicy": "fast-text",
+      "note": "轮尾手动刷新 v2：2 条不同建议，用于断言第二已知响应。",
+      "syntheticReason": "建议数组是验收合同的可计数已知响应，用于断言刷新追加新版本且总计恰好两次唯一生成；不是线上模型输出。"
+    },
+    {
+      "id": "plugin-management-nextstep-turn-footer-main",
+      "kind": "main",
+      "source": "synthetic",
+      "timingPolicy": "fast-text",
+      "note": "主对话成功回复 nextstep-e2e-ok；排除生成与标题请求的 marker。",
+      "syntheticReason": "轮尾触发依赖该轮成功收口，回复内容必须确定可断言；固定已知文本不是线上模型输出。"
+    }
+  ]
+}

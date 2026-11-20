@@ -12,8 +12,9 @@ import { extensionGrantSchema, extensionProtocolsSchema } from "#src/extension-h
  * 1.3.0（P3c）：会话 facade 的八个写动作（带请求身份的动作 requestId 可选，扩展进程补）；sendToSession 可带 model。
  * 1.4.0（P3e）：插件项目里的会话可以由插件回答审批与提问、切换权限模式（onDidChangeInteractions、
  *   resolveInteraction、setPermissionMode）；createSession 可带 mode；档位 sessions.fullAccess（完全访问）。
+ * 1.5.0：轮尾建议插槽和单独授权的会话模型生成能力。
  */
-export const EXTENSION_API_VERSION = "1.4.0";
+export const EXTENSION_API_VERSION = "1.5.0";
 
 /** 清单里各种 id：小写字母、数字、`.`、`_`、`-`。全局 id 是 `<pluginId>/<id>`。 */
 export const extensionLocalIdSchema = z

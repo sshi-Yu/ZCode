@@ -1,3 +1,4 @@
+import { createTurnFooterClient } from "./turnFooterClient.js";
 import {
   v4SessionDeletionPreviewSchema,
   v4SessionDeletionResultSchema,
@@ -1533,6 +1534,11 @@ export function createZCodeAgentService(
     return collector.acceptFact(fact);
   }
 
+  const turnFooter = createTurnFooterClient({
+    getReadClient: (target) => getReadOnlyClient(target),
+    getModelClient: (target) => getClient(target),
+    sendCommand: (input) => service.sendConversationCommandV4(input),
+  });
   const offPeakLifecycleEmitters = new Map<string, Emitter<OffPeakLifecycleNotification>>();
   const pluginUiToolResultEmitter = new Emitter<
     PluginUiToolResultNotification & ZCodeAgentWorkspaceTarget
@@ -2785,6 +2791,7 @@ export function createZCodeAgentService(
             });
           return;
         }
+        if (turnFooter.handleNotification(workspace, message)) return;
         if (contextComposition.handleNotification(workspace, message)) return;
         if (message.method === V4_NOTIFICATIONS.conversationTelemetryFact) {
           const parsed = conversationTelemetryFactSchema.safeParse(message.params);
@@ -4271,6 +4278,7 @@ export function createZCodeAgentService(
     offPeakLifecycleEmitters.clear();
     localTtftFactsEmitter.dispose();
     cuaPermissionObservationEmitter.dispose();
+    turnFooter.dispose();
     pluginUiToolResultEmitter.dispose();
     for (const emitter of workspaceConfigFrameEmitters.values()) {
       emitter.dispose();
@@ -4476,6 +4484,11 @@ export function createZCodeAgentService(
   }
 
   const service: IZCodeAgentService & { disposeAllAndWait(): Promise<void> } = {
+    onTurnFooterCompleted: turnFooter.onTurnFooterCompleted,
+    resolveTurnFooterAnchor: turnFooter.resolveTurnFooterAnchor,
+    readTurnFooterHistory: turnFooter.readTurnFooterHistory,
+    generateTurnFooterText: turnFooter.generateTurnFooterText,
+    submitTurnFooterSuggestion: turnFooter.submitTurnFooterSuggestion,
     async prepareStorage(params) {
       const client = await processManager.getClient(params);
       wireClient(client, params, "chat");
@@ -6906,6 +6919,24 @@ export function createZCodeAgentService(
         }
       };
       const client = await measure("host.runtime", () => getClient(params));
+      if (
+        params.envelope.type === "sendText" &&
+        (params.envelope.payload as { expectedTurnFooterAnchor?: unknown }).expectedTurnFooterAnchor
+      ) {
+        const capabilities = await client.request(
+          zcodeProtocolMethods.runtimeCapabilities,
+          {},
+          zcodeRuntimeCapabilitiesSchema,
+        );
+        // 复用实际发送的 client 验证；预检到发送之间进程换代不能剥掉 stale guard 后继续执行。
+        if (capabilities.turnFooterAnchorGuard !== true)
+          return {
+            commandId: params.envelope.commandId,
+            status: "rejected" as const,
+            reasonCode: "guard.turnFooterUnavailable",
+            revisionAtDecision: 0,
+          };
+      }
       // 新 Host 可能连接旧 CLI；先检查执行端，避免 z.object 静默丢弃状态后仍执行用户输入。
       const genUiContext = (params.envelope.payload as { genUiContext?: unknown } | null)
         ?.genUiContext;

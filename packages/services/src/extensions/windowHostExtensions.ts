@@ -28,6 +28,7 @@ import {
   getExtensionLogsInputSchema,
   grantsCover,
   provideMentionItemsInputSchema,
+  turnFooterRequestSchema,
   resolvePluginManifest,
   resolvedScopeSchema,
   viewRequestInputSchema,
@@ -63,9 +64,9 @@ import { createExtensionDraftRelay } from "#src/extensions/draftRelay.js";
 import { createEnvState } from "#src/extensions/envState.js";
 import { createGenerationPump } from "#src/extensions/generationPump.js";
 import { createModelsBackend } from "#src/extensions/modelsBackend.js";
-import { readPluginManifest } from "#src/extensions/manifestReader.js";
+import { hasUserExtensionCode, readPluginManifest } from "#src/extensions/manifestReader.js";
 import { createMentionItemsRouter } from "#src/extensions/mentionItems.js";
-import { createAuditLog } from "#src/extensions/auditLog.js";
+import { auditExtensionGrantChange, createAuditLog } from "#src/extensions/auditLog.js";
 import { createGrantsStore } from "#src/extensions/grantsStore.js";
 import { createGrantRequestRelay } from "#src/extensions/grantRequestRelay.js";
 import { createNotificationRelay } from "#src/extensions/notificationRelay.js";
@@ -77,6 +78,7 @@ import type { ExtensionTaskRowsSource } from "#src/extensions/sessionListPump.js
 import { createSettingsBackend } from "#src/extensions/settingsBackend.js";
 import { createExtensionViewRelay } from "#src/extensions/viewRelay.js";
 import { createWorkbenchState } from "#src/extensions/workbenchState.js";
+import { createTurnFooterRelay } from "#src/extensions/turnFooter.js";
 import type {
   ExtensionsContributionsMessage,
   IExtensionsService,
@@ -198,6 +200,7 @@ export function createWindowHostExtensions(deps: WindowHostExtensionsDeps): Wind
     staticTable: () => table,
     connection: () => (connection ? { gen: connection.gen, host: connection.host } : null),
     agent: deps.agent,
+    assertCommand: (commandId) => turnFooter.assertGenericCommand(commandId),
     logger,
   });
   // 用户授权的唯一 owner（grants.json）与审计日志（§17.7、§17.8）。
@@ -223,7 +226,10 @@ export function createWindowHostExtensions(deps: WindowHostExtensionsDeps): Wind
   });
   /** 网关复查开着的需授权订阅的信号：授权状态变化、静态表重发。 */
   const grantFactsChanged = new Emitter<void>();
-  const grantsSubscription = grants.onDidChange(() => grantFactsChanged.fire());
+  const grantsSubscription = grants.onDidChange(() => {
+    grantFactsChanged.fire();
+    turnFooter.factsChanged();
+  });
   const models = createModelsBackend({ modelSelection: deps.modelSelection, logger });
   const grantState = (pluginId: string) =>
     grants.snapshot().plugins.find((plugin) => plugin.pluginId === pluginId);
@@ -260,6 +266,17 @@ export function createWindowHostExtensions(deps: WindowHostExtensionsDeps): Wind
     },
     logger,
   });
+  const turnFooter = createTurnFooterRelay({
+    connection: () => (connection ? { gen: connection.gen, host: connection.host } : null),
+    staticTable: () => table,
+    declarations: () => declarations?.plugins ?? [],
+    snapshot: () => snapshot,
+    granted: (pluginId, grant) => grants.covers(pluginId, grant),
+    workbench,
+    agent: deps.agent,
+    logger,
+    audit,
+  });
   const handlers = createCapabilityHandlers({
     workbench,
     env,
@@ -275,6 +292,7 @@ export function createWindowHostExtensions(deps: WindowHostExtensionsDeps): Wind
     drafts,
     grantRequests,
     notifications,
+    turnFooter,
   });
   // 网关查授权的两份事实：清单声明来自静态表（本服务是 owner），用户授权来自授权记录。
   const grantFacts: CapabilityGrantFacts = {
@@ -292,6 +310,7 @@ export function createWindowHostExtensions(deps: WindowHostExtensionsDeps): Wind
     const current = connection;
     if (!current) return;
     connection = null;
+    turnFooter.factsChanged();
     // 视图实例属于这一代扩展进程：一并作废，标签页按新代际重建。
     views.detach();
     // 旧代际的会话调用（wait 最长 300 秒）一并中止：结果已经没有接收方。
@@ -347,6 +366,7 @@ export function createWindowHostExtensions(deps: WindowHostExtensionsDeps): Wind
     );
     contributions.fire({ kind: "static", table });
     grantFactsChanged.fire();
+    turnFooter.factsChanged();
   };
 
   /**
@@ -484,6 +504,7 @@ export function createWindowHostExtensions(deps: WindowHostExtensionsDeps): Wind
         return;
       }
       snapshot = next;
+      turnFooter.factsChanged();
       if (parsed.data.kind === "snapshot") {
         logger.info(
           undefined,
@@ -516,12 +537,15 @@ export function createWindowHostExtensions(deps: WindowHostExtensionsDeps): Wind
       }) satisfies Event<ExtensionHostStatus>,
     async executeCommand(input) {
       const parsed = executeCommandInputSchema.parse(input);
+      turnFooter.assertGenericCommand(parsed.commandId);
       const target = connection;
       if (!target) throw new Error("extension host is not connected");
       await target.host.executeCommand(parsed);
     },
     provideMentionItems: (input) =>
       provideMentionItems(provideMentionItemsInputSchema.parse(input)),
+    turnFooter: (input) => turnFooter.request(turnFooterRequestSchema.parse(input)),
+    onDynamicTurnFooterChanged: () => turnFooter.onDidChange,
     async reload() {
       logger.info(undefined, "reload extensions requested");
       // 先请 Main 重启：不等清单读取，扩展进程卡死或已停止时也能马上生效。新代际牵线时的推送排在
@@ -561,31 +585,9 @@ export function createWindowHostExtensions(deps: WindowHostExtensionsDeps): Wind
     onDynamicLogs: () => logs.event,
   };
 
-  /** 授权与撤销各记一行审计（§17.8）。 */
-  const auditGrantChange = (
-    pluginId: string,
-    capability: "grants.grant" | "grants.revoke",
-    tiers: readonly string[],
-  ) =>
-    audit.append({
-      gen: connection?.gen ?? null,
-      pluginId,
-      capability,
-      ...(tiers.includes("sessions.fullAccess")
-        ? { grant: "sessions.fullAccess" as const }
-        : tiers.includes("sessions.write")
-          ? { grant: "sessions.write" as const }
-          : tiers.includes("sessions.read")
-            ? { grant: "sessions.read" as const }
-            : tiers.includes("notifications")
-              ? { grant: "notifications" as const }
-              : {}),
-      outcome: "ok",
-    });
-
   const revokeGrants = async (pluginId: string, reason: string) => {
     const revoked = await grants.revoke(pluginId, (tiers) =>
-      auditGrantChange(pluginId, "grants.revoke", tiers),
+      auditExtensionGrantChange(audit, connection?.gen ?? null, pluginId, "grants.revoke", tiers),
     );
     sessions.abortPlugin(pluginId);
     if (revoked.length === 0) return;
@@ -604,7 +606,13 @@ export function createWindowHostExtensions(deps: WindowHostExtensionsDeps): Wind
     async grant(input) {
       const parsed = grantExtensionInputSchema.parse(input);
       const granted = await grants.grant(parsed.pluginId, parsed.grants, (tiers) =>
-        auditGrantChange(parsed.pluginId, "grants.grant", tiers),
+        auditExtensionGrantChange(
+          audit,
+          connection?.gen ?? null,
+          parsed.pluginId,
+          "grants.grant",
+          tiers,
+        ),
       );
       logger.info(
         undefined,
@@ -619,18 +627,12 @@ export function createWindowHostExtensions(deps: WindowHostExtensionsDeps): Wind
       const holders = grants.holders(pluginId);
       if (holders.length === 0) return { confirm: false, holders: [] };
       // 只有带扩展代码（合法、兼容、有 main）的插件需要确认：别的插件启用后没有代码在扩展进程里运行。
-      const result = await deps.pluginManagement.listPlugins({
-        workspacePath: deps.inventoryWorkspacePath,
-        configScope: "user",
-      });
-      const plugin = result.plugins.find((candidate) => candidate.id === pluginId);
-      if (!plugin || plugin.packageStatus === "missing") return { confirm: false, holders };
-      const { entry } = resolvePluginManifest(
-        { pluginId, name: plugin.name, rootPath: plugin.rootPath },
-        await readPluginManifest(plugin.rootPath),
+      const confirm = await hasUserExtensionCode(
+        deps.pluginManagement,
+        deps.inventoryWorkspacePath,
+        pluginId,
       );
-      const hasCode = entry.extension?.state === "ok" && Boolean(entry.extension.main);
-      return { confirm: hasCode, holders };
+      return { confirm, holders };
     },
     async getRecentActions(input) {
       const parsed = getExtensionRecentActionsInputSchema.parse(input);
@@ -772,6 +774,7 @@ export function createWindowHostExtensions(deps: WindowHostExtensionsDeps): Wind
       disposed = true;
       detach("window host disposed");
       views.dispose();
+      turnFooter.dispose();
       contextPump.dispose();
       generationPump.dispose();
       workbench.dispose();

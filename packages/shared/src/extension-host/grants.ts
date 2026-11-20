@@ -14,6 +14,7 @@ export const EXTENSION_GRANTS = [
   "sessions.write",
   "sessions.fullAccess",
   "notifications",
+  "turnFooter.generate",
 ] as const;
 export const extensionGrantSchema = z.enum(EXTENSION_GRANTS);
 export type ExtensionGrant = z.infer<typeof extensionGrantSchema>;

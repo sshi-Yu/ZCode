@@ -15,6 +15,26 @@ const AUDIT_FILE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})\.jsonl$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_RECENT_LIMIT = 20;
 
+/** 授权审计只记最高档位，不含正文；优先序沿用会话授权审计。 */
+export function auditExtensionGrantChange(
+  audit: AuditLog,
+  gen: number | null,
+  pluginId: string,
+  capability: "grants.grant" | "grants.revoke",
+  tiers: readonly string[],
+): Promise<void> {
+  const grant = (
+    [
+      "sessions.fullAccess",
+      "sessions.write",
+      "sessions.read",
+      "turnFooter.generate",
+      "notifications",
+    ] as const
+  ).find((tier) => tiers.includes(tier));
+  return audit.append({ gen, pluginId, capability, ...(grant ? { grant } : {}), outcome: "ok" });
+}
+
 export interface AuditLogDeps {
   dir: string;
   logger: Pick<ServiceLogger, "warn">;

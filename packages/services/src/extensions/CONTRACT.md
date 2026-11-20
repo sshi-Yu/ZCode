@@ -21,4 +21,26 @@
 - 只在桌面本机 Host 注册；Web 与手机远控不提供这三个频道（不在手机白名单里）。
 - `prepareView` 可带 `input`（file.viewer 打开文件时，§16.5），按协议的 `extensionViewInputSchema` 校验后经 `openView` 交给扩展进程。
 - 视图实例属于一代扩展进程：换代或断开时全部作废。不为单个视图请求设计取消，关闭实例即取消在途请求。
+- `conversation.turnFooter`（`turnFooter.ts`）：依 `docs/superpowers/specs/2026-11-20-nextstep-turn-footer-design.md`，仅桌面本地主会话。Host 按 `order → pluginId → itemId` 确定唯一运行中且用户已授予 `sessions.read` 与 `turnFooter.generate` 的 provider；普通命令与 mention 入口拒绝轮尾命令。Renderer 只提交即时 row 定位，CLI 解析持久 anchor；读取不签发 permit。生成许可为随机、限时、一次性 nonce，绑定连接代际、静态插件事实、provider 和可信 anchor；每次异步返回后重查绑定。TTL 只回收许可，不用于状态同步。
+- 轮尾版本与正文唯一 owner 是插件；Host 只持许可、已受理 requestId/commandId、每 anchor 串行链与单调 version/revision 水位。实时完成事件非阻塞派发，refresh/submit 经同一 anchor 的串行准入；旧读不得低于已观察到的水位。发送只读当前最新 ready 版本的指定建议，再复核 CLI 当前 anchor 后进入已有发送入口。插件 invalidate 须来自当前 provider 且 anchor 已由 Host 确认，事件只发往当前本地可见会话；provider/连接变化发 `null` 使 Renderer 重读，不另开远程频道。
+
+```mermaid
+sequenceDiagram
+    participant CLI as CLI / runtime
+    participant Host as Window Host 准入 owner
+    participant Plugin as 推荐持久状态 owner
+    participant UI as 本地 Renderer
+    CLI->>Host: 成功收口事件（不等模型）
+    Host->>Plugin: completed(anchor, requestId, permit)
+    Plugin->>Host: history / generate(permit)
+    Host->>CLI: 绑定 anchor 的受限读取 / 独立生成
+    CLI-->>Host: 结果
+    Host-->>Plugin: 复查 provider 绑定后的结果
+    Plugin->>Host: invalidate(anchor, version, revision)
+    Host-->>UI: 仅使本地对应读取失效
+    UI->>Host: readLatest / refresh / submit
+    Host->>CLI: 当前分支与动作资格核验
+    Host->>Plugin: readLatest 或带许可的 refresh
+```
+
 - `composer.mention`（§16.6，`mentionItems.ts`）：`provideMentionItems({ entry, query, scope, seq })` 只认静态表里该插槽的可用条目。command 条目调扩展命令（`args: { query }`），返回值按 `EXTENSION_SLOTS["composer.mention"].commandResult` 校验；tool 条目要会话作用域，调 `IZCodeAgentService.getPluginMentionItems`（CLI plugins/mentionItems，会话的授权链）。结果是 `{ seq, status: ok | unsupported | error }`，错误折成稳定码，不抛给 Renderer。不设计取消，seq 原样带回。日志不记 query 与候选内容。

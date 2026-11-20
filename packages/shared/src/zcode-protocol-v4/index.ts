@@ -3,6 +3,7 @@
 // 本包纪律：只放 schema 类型 + 纯函数
 // （coalesce/conflation/apply），运行时（通道层缓冲、订阅注册表、调度）一律不进本包。
 // 与旧 packages/shared/src/zcode-protocol 并存。
+export * from "./turn-footer.js";
 export * from "./core.js";
 export * from "../background-bash-output.js";
 export * from "./rows.js";

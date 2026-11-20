@@ -1828,6 +1828,30 @@ export function createConversationV4Gateway(
       }),
     emitModelRequestMetrics: (fact) =>
       context.notify({ method: V4_NOTIFICATIONS.modelRequestMetrics, params: fact }),
+    loadTurnFooterBranch: async (sessionId) => {
+      const session = await context.deps.sessionStore?.getSession(sessionId as SessionId);
+      return {
+        branchCutAfterMessageId: session?.revert?.branchCutAfterMessageID,
+        rewindCreatedMessageId: session?.revert?.createdMessageID,
+        rewindKeptMessageIds: session?.revert?.keptMessageIDs,
+        rewindTargetMessageId: session?.revert?.targetMessageID,
+      };
+    },
+    isTurnFooterSessionEligible: (sessionId, workspace) => {
+      const record = context.sessions.get(sessionId);
+      return Boolean(record &&
+        (!record.taskType || record.taskType === "interactive" || record.taskType === "fork") &&
+        !record.workspace.remoteSessionId &&
+        !parseRemoteWorkspaceIdentity(record.workspace.workspaceIdentity ?? "") &&
+        (!workspace || record.workspace.workspaceKey === (workspace.workspaceIdentity?.trim() || workspace.workspacePath)));
+    },
+    emitTurnFooterCompleted: (anchor) =>
+      context.notify({ method: V4_NOTIFICATIONS.turnFooterCompleted, params: anchor }),
+    generateTurnFooterText: async (sessionId, input) => {
+      const record = context.sessions.get(sessionId);
+      if (!record) return { status: "failed", code: "turnFooter.unavailable" };
+      return record.app.runtime.generateTurnFooterText(input);
+    },
     emitPluginUiToolResult: (result) =>
       context.notify({ method: V4_NOTIFICATIONS.pluginUiToolResult, params: result }),
     emitCuaPermissionObservation: (observation) =>

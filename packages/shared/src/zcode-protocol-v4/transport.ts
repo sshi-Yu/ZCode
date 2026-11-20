@@ -357,6 +357,9 @@ export const V4_METHODS = {
   // 行分页 query（rows/range）：只读、无状态、超时重发安全。
   conversationRowsRange: "v4/conversation/rowsRange",
   // 手机输入预测（input-prediction.ts）：只读查询；旧 CLI 不认识时手机静默无 hint。
+  turnFooterResolveAnchor: "v4/conversation/turnFooter/resolveAnchor",
+  turnFooterReadHistory: "v4/conversation/turnFooter/readHistory",
+  turnFooterGenerateText: "v4/conversation/turnFooter/generateText",
   conversationInputPrediction: "v4/conversation/inputPrediction",
   // 当前有效分支的终态 ExitPlanMode 目录；只读、无状态、超时重发安全。
   conversationPlans: "v4/conversation/plans",
@@ -442,6 +445,7 @@ export const V4_NOTIFICATIONS = {
   localTtftFacts: "v4/telemetry/local-ttft",
   // 仅当前进程 live ToolCallResult 产生；历史与 replayable 链路不得补造。
   cuaPermissionObservation: "v4/cua/permission-observation",
+  turnFooterCompleted: "v4/conversation/turnFooter/completed",
   pluginUiToolResult: "v4/plugin-ui/tool-result",
   // context 组成变更：只带 { sessionId, revision }，live-only，不进 snapshot。
   conversationContextCompositionChanged: "v4/conversation/contextCompositionChanged",

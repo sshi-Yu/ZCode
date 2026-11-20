@@ -707,6 +707,12 @@ export class ZCodeProtocolAgentServer {
         return {};
       }
       // ── 行分页 query（独立分支，便于与帧分派改动合并）──
+      case V4_METHODS.turnFooterResolveAnchor:
+        return await this.requireV4Gateway().resolveTurnFooterAnchor(request.params);
+      case V4_METHODS.turnFooterReadHistory:
+        return await this.requireV4Gateway().readTurnFooterHistory(request.params);
+      case V4_METHODS.turnFooterGenerateText:
+        return await this.requireV4Gateway().generateTurnFooterText(request.params);
       case V4_METHODS.conversationRowsRange:
         return await this.requireV4Gateway().rowsRange(request.params);
       // 手机输入预测：只读、无状态；同会话新请求替代旧请求。
@@ -986,6 +992,7 @@ export class ZCodeProtocolAgentServer {
           worktreeCwd: true,
           // 认识 {kind:"extension"} 输入来源（sendText / createSession.firstInput）。旧 CLI 会拒绝或
           // 静默剥掉它，Host 据此决定能否代扩展发消息（docs/design/v2/conversation-input-source.md §7）。
+          turnFooterAnchorGuard: true,
           extensionInputSource: true,
           // 对话引用的 comment / agent 字段会进入模型输入（选区批注）；旧 CLI 会静默剥掉。
           conversationQuoteComment: true,

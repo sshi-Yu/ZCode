@@ -1,3 +1,19 @@
+import type { ActiveConversationBranchOptions } from "@zcode/contracts";
+import {
+  matchesTurnFooterAnchor,
+  newlyCompletedTurnFooterAnchors,
+  readBoundedTurnFooterHistory,
+  resolveTurnFooterAnchor,
+} from "./turn-footer.js";
+import {
+  turnFooterResolveAnchorParamsSchema,
+  turnFooterHistoryParamsSchema,
+  turnFooterGenerateTextParamsSchema,
+  turnFooterGenerateTextResultSchema,
+  type TurnFooterAnchor,
+  type TurnFooterGenerateTextResult,
+  type TurnFooterWorkspace,
+} from "@zcode/shared/zcode-protocol-v4";
 import {
   pluginUiToolResultNotificationSchema,
   type PluginUiToolResultNotification,
@@ -223,6 +239,14 @@ interface BinaryReadCacheEntry {
 }
 
 export interface V4GatewayHost {
+  /** 本地普通主会话限定；缺失能力时 fail closed。workspace 供跨工作区请求验证。 */
+  loadTurnFooterBranch?(sessionId: string): Promise<ActiveConversationBranchOptions>;
+  isTurnFooterSessionEligible?(sessionId: string, workspace?: TurnFooterWorkspace): boolean;
+  emitTurnFooterCompleted?(anchor: TurnFooterAnchor): void;
+  generateTurnFooterText?(
+    sessionId: string,
+    input: { text: string; maxOutputTokens: number },
+  ): Promise<TurnFooterGenerateTextResult>;
   /** 正在拆旧实例时，不允许订阅抢先重建 publisher。 */
   isSessionStopping?(sessionId: string): boolean;
   cliVersion?: string;
@@ -807,6 +831,22 @@ export class ConversationV4Gateway {
       },
       // 在 inbox 去重之后拒绝新执行，不把未就绪输入接受进运行队列。
       guard: (envelope) => {
+        if (envelope.type === "sendText") {
+          const expected = (envelope.payload as { expectedTurnFooterAnchor?: TurnFooterAnchor })
+            .expectedTurnFooterAnchor;
+          if (expected) {
+            const publisher = envelope.sessionId ? this.publishers.get(envelope.sessionId) : undefined;
+            if (!envelope.sessionId || !this.host.isTurnFooterSessionEligible?.(envelope.sessionId)) {
+              return { verdict: "reject", reasonCode: "guard.turnFooterUnavailable" };
+            }
+            // 原因：Host 预检后仍可能等待前一条命令；必须持有 inbox session gate 后重查当前分支。
+            const snapshot = publisher?.getSnapshot();
+            if (snapshot?.pendingCommands.length || snapshot?.queue.items.length ||
+                !matchesTurnFooterAnchor(publisher ? resolveTurnFooterAnchor(publisher) : null, expected)) {
+              return { verdict: "stale", reasonCode: "guard.turnFooterAnchorStale" };
+            }
+          }
+        }
         const initialization =
           envelope.sessionId === null
             ? undefined
@@ -1069,6 +1109,8 @@ export class ConversationV4Gateway {
 
   private ingestNormalizedEvent(sessionId: string, event: SessionEvent): void {
     const publisher = this.ensurePublisher(sessionId);
+    const beforeTurnFooter = this.host.emitTurnFooterCompleted &&
+      this.host.isTurnFooterSessionEligible?.(sessionId) ? publisher.getSnapshot() : undefined;
     const promotedQueueRemoval =
       event.type === SessionEventType.TurnSteerDiscarded &&
       (event.payload as { reason?: string }).reason === "promoted";
@@ -1109,6 +1151,16 @@ export class ConversationV4Gateway {
       return;
     }
     this.resolveProjectionEventCommit(sessionId, String(event.id));
+    if (beforeTurnFooter) {
+      // 只在 live 提交出口观察状态迁移；冷恢复直接 rehydrate，不补发历史完成事实。
+      try {
+        for (const anchor of newlyCompletedTurnFooterAnchors(beforeTurnFooter, publisher)) {
+          this.host.emitTurnFooterCompleted?.(anchor);
+        }
+      } catch (error) {
+        this.host.onError?.("v4.turnFooter.completed", error);
+      }
+    }
     // 原因：后台会话没有卡片/订阅时无法创建 guest。只在 live 投影提交后投递，
     // 从同一权威工具行取输入和 UI 描述；历史 hydration 直接写 publisher，不走此入口。
     if (event.type === SessionEventType.ToolCallResult && this.host.emitPluginUiToolResult) {
@@ -2954,6 +3006,46 @@ export class ConversationV4Gateway {
   /** fork 目标必须是所属轮最后一段 assistantText（无投影 → null，按未知处理）。 */
   isLatestAssistantSegmentRow(sessionId: string, rowId: number): boolean | null {
     return this.publishers.get(sessionId)?.isLatestAssistantSegmentRow(rowId) ?? null;
+  }
+
+  async resolveTurnFooterAnchor(rawParams: unknown): Promise<TurnFooterAnchor | null> {
+    const params = turnFooterResolveAnchorParamsSchema.parse(rawParams);
+    const publisher = await this.prepareTurnFooterPublisher(params);
+    return publisher ? resolveTurnFooterAnchor(publisher, params.rowId) : null;
+  }
+
+  async readTurnFooterHistory(rawParams: unknown) {
+    const params = turnFooterHistoryParamsSchema.parse(rawParams);
+    const publisher = await this.prepareTurnFooterPublisher(params);
+    if (!publisher || !matchesTurnFooterAnchor(resolveTurnFooterAnchor(publisher, undefined, params.productTurnId), params)) return [];
+    const messages = await this.host.loadPersistedMessages?.(params.sessionId);
+    const branch = await this.host.loadTurnFooterBranch?.(params.sessionId);
+    if (!messages || !matchesTurnFooterAnchor(resolveTurnFooterAnchor(publisher, undefined, params.productTurnId), params)) return [];
+    return readBoundedTurnFooterHistory(messages, params, branch);
+  }
+
+  async generateTurnFooterText(rawParams: unknown): Promise<TurnFooterGenerateTextResult> {
+    const params = turnFooterGenerateTextParamsSchema.parse(rawParams);
+    const publisher = await this.prepareTurnFooterPublisher(params);
+    if (!publisher || !matchesTurnFooterAnchor(resolveTurnFooterAnchor(publisher, undefined, params.productTurnId), params)) {
+      return { status: "failed", code: "turnFooter.anchorStale" };
+    }
+    if (!this.host.generateTurnFooterText) return { status: "failed", code: "turnFooter.unavailable" };
+    return turnFooterGenerateTextResultSchema.parse(await this.host.generateTurnFooterText(params.sessionId, {
+      text: params.text,
+      maxOutputTokens: params.maxOutputTokens,
+    }));
+  }
+
+  private async prepareTurnFooterPublisher(params: TurnFooterWorkspace & { sessionId: string }) {
+    const publisher = this.host.sessionExists(params.sessionId)
+      ? await this.hydratePublisher(params.sessionId)
+      : await this.ensureColdReadyPublisher(params.sessionId, undefined, {
+          workspacePath: params.workspacePath,
+          ...(params.workspaceIdentity ? { workspaceIdentity: params.workspaceIdentity } : {}),
+          workspaceKey: params.workspaceIdentity?.trim() || params.workspacePath,
+        });
+    return this.host.isTurnFooterSessionEligible?.(params.sessionId, params) ? publisher : null;
   }
 
   resolveStableForkCandidate(sessionId: string, rowId: number) {

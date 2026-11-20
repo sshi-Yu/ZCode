@@ -532,3 +532,46 @@ Windows 上变量名不分大小写只写一份、代理地址不合法时只记
 ## PLM-DESIGN-001：Design 默认关闭与浏览器安装引导
 
 默认配置下 Design 可发现但未启用，技能与 hook 不进入会话。人类 Browser 点击“选择元素”出现安装提示且按钮未选中；取消保留页面，确认打开指定 Design 详情页。用户启用后回到 Browser 可选择元素，停用后退出设计运行时。用户/项目显式启用配置继续有效。查询失败及目标切换不复用旧启用状态。Agent 普通元素引用与自由尺寸不受影响。
+
+## PLM-EXT-NST：NextStep 轮尾推荐（turnFooter）
+
+设计见 [NextStep 轮尾推荐设计](superpowers/specs/2026-11-20-nextstep-turn-footer-design.md)。共享协议
+schema 已随 `EXTENSION_API_VERSION` 1.5.0 落地：`packages/shared/src/extension-host/turnFooter.ts`
+（锚点 `turnFooterAnchorSchema`、Renderer 即时定位 `turnFooterTargetSchema`、结果与
+`permit` 命令参数）、`capabilities.ts` 的 `turnFooter.history` / `turnFooter.generate` /
+`turnFooter.invalidate`、`slots.ts` 的 `conversation.turnFooter` 与 `grants.ts` 的独立档位
+`turnFooter.generate`。本节登记的是验收合同，不是现行覆盖；实际证据见 [覆盖矩阵](testing/plugin-management-lifecycle-e2e-coverage-matrix.md)。
+
+官方候选桌面入口：`packages/desktop/test/e2e/plugins/extensions/manual-review/pending/plugin-management-nextstep-turn-footer.test.ts`。
+首版只覆盖 Desktop 本地工作区主对话；Web、手机远控、远程工作区、辅助对话与只读会话不注册轮尾提供者。
+模型 fixture 必须可计数：每条 case 同时断言物理模型请求次数、插件持久版本记录与桌面轮尾回显。
+`permit` 一次性核销、认领 `owner` UUID 与重启围栏、特殊重放禁止（鉴权/项目令牌刷新、签名拒绝修复、
+off-peak 排队豁免与票据重放、请求校验重放）以及 CLI `CommandInbox` 串行 admission 内的最终
+stale 判定，都必须有运行时证据，不接受只看 UI 状态。
+
+| Case   | Setup                                                                                                           | Action                                           | Assertions                                                                                                                                                           | Evidence                                  | Initial status  |
+| ------ | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | --------------- |
+| NST-01 | replay 夹具一轮内含多个模型片段、工具调用与队列切分                                                             | 等待产品轮转为 `completedSuccess`                | 每个符合条件的成功产品轮只触发一次 `completed`；流式中、引导续跑、失败和中断不触发；模型调用计数与合格轮数一致                                                       | provider capture + 插件版本记录 + DOM     | `manual-review` |
+| NST-02 | 已生成 v1；重复送达完成通知、切会话再切回、关闭重开编辑器、重启应用                                             | 重放、重挂载、重启后读取                         | 建议与版本一致；模型请求计数仍为 1；重放和重挂载只读                                                                                                                 | 计数 fixture + 存储快照 + DOM             | `manual-review` |
+| NST-03 | 安装后打开既有旧会话                                                                                            | 多次打开；点一次「生成推荐」                     | 最新合格回复才有入口；打开次数不影响调用数；点击后从 0 变为 1；更早回复不补生成                                                                                      | provider capture + DOM                    | `manual-review` |
+| NST-04 | 已有 v1 且 v2 在途                                                                                              | 连续点击刷新、重复投递同一点击，再做一次独立刷新 | 在途时只有一个被接受；重复 `requestId` 返回原版本、不增加调用数；同一 `permit` 二次调用 `turnFooter.generate` 被拒；新刷新追加一版并保留旧版，恢复后显示最新记录     | 计数 fixture + 版本记录 + permit 拒绝日志 | `manual-review` |
+| NST-05 | 生成期间切走；注入模型超时、非法输出、鉴权失效、签名拒绝、off-peak 排队等特殊重放类失败与宿主中断；插件重启换代 | 等待结果；重启后读取；手动刷新                   | 结果只归原锚点；特殊失败不重发（物理模型请求恰一次），结算 `failed` / `unknown`；重启后旧 `owner` 在途记录结算为 `unknown`，新实例不接管、不重发；手动刷新开启下一版 | 计数 fixture + 存储快照 + Host/CLI 日志   | `manual-review` |
+| NST-06 | 重试、编辑或分叉后返回；旧结果迟到                                                                              | 点旧建议、尝试提交                               | 新回复和不同会话不复用旧记录；历史复制不发起生成；旧按钮 `submit` 得 `stale` 或 `blocked`，不投向新焦点                                                              | DOM + submit 回执                         | `manual-review` |
+| NST-07 | 最新 `ready` 建议；输入框另有未发送草稿                                                                         | 点击建议；验证常规权限流程                       | 最多一次 `accepted`（CLI 串行 admission 最终判定，竞态提交其余 `stale` / `blocked`）；发送到按钮绑定的会话；草稿不被覆盖；Agent 工具仍按当前权限执行                 | provider capture + 草稿 DOM + 审批 DOM    | `manual-review` |
+| NST-08 | 已有旧版推荐；切换有效模型                                                                                      | 查看旧推荐；手动刷新                             | 查看不调用模型；刷新使用新模型并按该模型记录用量；原版仍可由存储核对                                                                                                 | 计数 fixture + 用量记录                   | `manual-review` |
+| NST-09 | 远程工作区或手机远控回放同一会话                                                                                | 打开会话                                         | 不渲染本地扩展轮尾、不重复生成；对话与发送路径照常可用（需要对应远程/远控夹具，未运行前不算覆盖）                                                                    | DOM + 计数 fixture                        | `manual-review` |
+
+视觉更新候选浏览器入口：`packages/ui/test/browser/manual-review/pending/nextstep-turn-footer-visual.test.mjs`，使用真实组件和 Hook，经现有 Provider 注入受控服务；初读由隔离测试夹具显式挂起，不依赖生产测试钩子。以下为验收要求，新增断言未运行不代表通过：
+
+| Case       | Setup / Action                                                     | 必须断言                                                                                                                                                                                   |
+| ---------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| NST-VIS-01 | 生成 2–5 个原始候选，含 Unicode 补充字符和同码点长度项             | 新结果 2–4 条，按 label Unicode 码点长度升序、同长保持原始顺序；纵向左对齐。                                                                                                               |
+| NST-VIS-02 | 读取旧版持久五条 ready 结果                                        | 仅展示排序后最短四条；ID、版本及持久数据不改写，不发起生成。                                                                                                                               |
+| NST-VIS-03 | 延迟初读、后台重读及刷新；受理 generating                          | 初读立刻显示读取状态与两行占位；刷新点击立刻显示生成状态并禁用重复动作，不展示旧 ready；状态文本、`aria-busy` 和操作可用性符合事实。已知 generating 时重读失败可见错误且可重试，重试只读。 |
+| NST-VIS-04 | 不同中英文维度及未知维度，鼠标和键盘交互                           | 映射内置语义图标、未知维度使用探索图标；可操作项有 pointer、hover 和可见键盘焦点，完整提示词可预览。                                                                                       |
+| NST-VIS-05 | 首次显示、版本切换、同版本重读及 reduced-motion                    | 入场 200ms、各行 30ms 错峰；同版本重读不重播；减少动态效果时关闭位移、错峰和旋转，保留文字状态。                                                                                           |
+| NST-VIS-06 | 切会话、切回，初读与失效通知交错；刷新回执晚于失效重读失败或 ready | 只读且不重复生成；后台重读保留现有列表并禁用操作，旧读及迟到回执不得覆盖较新事实；读取失败后旧建议禁用、仅能重试读取，成功后显示新结果；最终 unavailable 时隐藏整个区域。                  |
+
+全部 NST case 登记时 `not run`、`not promoted`：保持 `manual-review/pending`，不进入默认 WDIO、
+Docker preset 或 macOS/Windows 正式 CI；状态追踪见
+[覆盖矩阵](testing/plugin-management-lifecycle-e2e-coverage-matrix.md) 的 PLM-EXT-NST。

@@ -76,6 +76,7 @@ function invocationContext(request: TestModelTextRequest): ModelInvocationContex
     // 准入端口与重试预算（docs/dynamic-workflow/concurrency.md「Where the port is bound」）同样经调用上下文到 runner。
     modelRequestAdmission: request.modelRequestAdmission,
     modelRetryBudget: request.modelRetryBudget,
+    modelRequestRedispatchPolicy: request.modelRequestRedispatchPolicy,
     modelRequestSessionType: request.modelRequestSessionType,
     modelRequestSessionFeatures: request.modelRequestSessionFeatures,
     preserveProviderStreamBoundaries: request.preserveProviderStreamBoundaries,

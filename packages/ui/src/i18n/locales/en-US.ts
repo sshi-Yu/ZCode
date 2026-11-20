@@ -1372,6 +1372,25 @@ const enUS: Record<string, string> = {
   "extensions.view.unavailable": "This extension view is not available right now.",
   "extensions.view.unsupported": "Extension views are not supported here.",
   "extensions.view.failed": "The extension view failed to load: {reason}",
+  "extensions.turnFooter.label": "Next steps",
+  "extensions.turnFooter.generate": "Generate suggestions",
+  "extensions.turnFooter.refresh": "Refresh suggestions",
+  "extensions.turnFooter.retryRead": "Reload suggestions",
+  "extensions.turnFooter.status.reading": "Loading suggestions…",
+  "extensions.turnFooter.status.submitting": "Continuing conversation…",
+  "extensions.turnFooter.status.generating": "Generating suggestions…",
+  "extensions.turnFooter.status.empty": "No suggestions for this reply.",
+  "extensions.turnFooter.status.failed":
+    "Couldn't generate suggestions. You can refresh to try again.",
+  "extensions.turnFooter.status.unknown":
+    "The generation result is unknown. Refresh to start a new request.",
+  "extensions.turnFooter.error.read": "Couldn't load suggestions.",
+  "extensions.turnFooter.error.refresh": "Couldn't refresh suggestions. Try again.",
+  "extensions.turnFooter.error.submit": "Couldn't submit the suggestion. Try again.",
+  "extensions.turnFooter.error.stale":
+    "These suggestions are out of date. Refresh to get new suggestions.",
+  "extensions.turnFooter.error.blocked": "This conversation can't accept a suggestion right now.",
+  "extensions.turnFooter.submitted": "Suggestion submitted",
   // Extension permissions (docs/plugins/extension-host.md 17.7). The dialog body follows the spec text.
   "extensions.grants.needsConsent": "Needs permission",
   "extensions.grants.grant": "Grant",
@@ -1379,6 +1398,10 @@ const enUS: Record<string, string> = {
   "extensions.grants.tier.sessions.write": "Read and change sessions",
   "extensions.grants.tier.sessions.fullAccess": "Read and change sessions, with full access",
   "extensions.grants.tier.notifications": "Send system notifications",
+  "extensions.grants.tier.turnFooter.generate": "Generate next-step suggestions",
+  "extensions.grants.dialog.titleTurnFooter": "Allow “{plugin}” to generate next-step suggestions?",
+  "extensions.grants.dialog.turnFooterBody":
+    "Next-step suggestions: after a reply completes, the plugin can automatically make an additional model request using the conversation's active model. Generating and manually refreshing suggestions consume your model quota. This permission does not let the plugin send messages automatically; a suggestion continues the conversation only when you click it.",
   "extensions.grants.dialog.titleRead": "Allow “{plugin}” to read sessions?",
   "extensions.grants.dialog.titleWrite": "Allow “{plugin}” to read and change sessions?",
   "extensions.grants.dialog.titleNotifications": "Allow “{plugin}” to send system notifications?",

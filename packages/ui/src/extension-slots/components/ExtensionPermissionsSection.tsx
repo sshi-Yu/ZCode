@@ -128,6 +128,11 @@ export function ExtensionPermissionsSection({ pluginId }: ExtensionPermissionsSe
       <p className="mt-2 text-ui-sm text-foreground-subtle">
         {intl.formatMessage({ id: "extensions.permissions.note" })}
       </p>
+      {tiers.includes("turnFooter.generate") ? (
+        <p className="mt-2 text-ui-sm text-foreground-subtle">
+          {intl.formatMessage({ id: "extensions.grants.dialog.turnFooterBody" })}
+        </p>
+      ) : null}
       {state.notificationsEnabled !== undefined && setNotifications ? (
         // 系统通知开关（§18.1 H8，默认开）：只在通知档位生效时显示。
         <div className="mt-3 flex min-w-0 items-center justify-between gap-3">

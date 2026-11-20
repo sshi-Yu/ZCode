@@ -93,22 +93,22 @@
 
 Todo103 新增/迁接候选：PLM-LC-018/019 对应 `plugins/manual-review/pending/plugin-store-auto-refresh-{throttled,on-enter}.test.ts`；Pro `desktop-e2e-20260909-152018-653` 两例通过。PLM-LC-020 对应 `plugins/runtime/plugin-subagent-override-cold.test.ts`，Pro `desktop-e2e-20260909-152419-828` 冷启动 child/父 continuation 请求验证通过，case-local fixture check 通过。三项均未人工晋级；019 保持公网 smoke、不进入正式 CI。
 
-| Abbreviation | Pending spec                                                                        |
-| ------------ | ----------------------------------------------------------------------------------- |
-| `PD` / `PP`  | `plugins/marketplace/plugin-management-discovery-presentation.test.ts`                          |
-| `PM`         | `plugins/installation/plugin-management-personal-lifecycle.test.ts`                              |
-| `PV` / `PO`  | `plugins/installation/plugin-management-persistence-source.test.ts`                              |
-| `PB` / `PI`  | `plugins/installation/plugin-management-builtin-inline.test.ts`                                  |
-| `PC`         | `plugins/installation/plugin-cdn-zip-marketplace-install.test.ts`                                |
-| `PCS`        | `plugins/installation/manual-review/pending/plugin-cdn-zip-official-cdn-smoke.test.ts`           |
-| `PF`         | `plugins/installation/manual-review/pending/plugin-management-recoverable-failures.test.ts`      |
+| Abbreviation | Pending spec                                                                                |
+| ------------ | ------------------------------------------------------------------------------------------- |
+| `PD` / `PP`  | `plugins/marketplace/plugin-management-discovery-presentation.test.ts`                      |
+| `PM`         | `plugins/installation/plugin-management-personal-lifecycle.test.ts`                         |
+| `PV` / `PO`  | `plugins/installation/plugin-management-persistence-source.test.ts`                         |
+| `PB` / `PI`  | `plugins/installation/plugin-management-builtin-inline.test.ts`                             |
+| `PC`         | `plugins/installation/plugin-cdn-zip-marketplace-install.test.ts`                           |
+| `PCS`        | `plugins/installation/manual-review/pending/plugin-cdn-zip-official-cdn-smoke.test.ts`      |
+| `PF`         | `plugins/installation/manual-review/pending/plugin-management-recoverable-failures.test.ts` |
 | `PEA`        | `plugins/runtime/plugin-runtime-env-agent-projection.test.ts`                               |
-| `PGA`        | `plugins/installation/plugin-no-git-github-archive.test.ts`                                      |
-| `PRA`        | `plugins/manual-review/pending/plugin-refresh-atomic-cache.test.ts`                 |
-| `PBD`        | `plugins/manual-review/pending/plugin-management-builtin-detail-parity.test.ts`     |
-| `PBO`        | `plugins/manual-review/pending/plugin-management-bundled-install-ownership.test.ts` |
-| `PBS`        | `plugins/manual-review/pending/plugin-management-seed-runtime-separation.test.ts`   |
-| `PML`        | `plugins/marketplace/plugin-management-installed-menu-layout.test.ts`                           |
+| `PGA`        | `plugins/installation/plugin-no-git-github-archive.test.ts`                                 |
+| `PRA`        | `plugins/manual-review/pending/plugin-refresh-atomic-cache.test.ts`                         |
+| `PBD`        | `plugins/manual-review/pending/plugin-management-builtin-detail-parity.test.ts`             |
+| `PBO`        | `plugins/manual-review/pending/plugin-management-bundled-install-ownership.test.ts`         |
+| `PBS`        | `plugins/manual-review/pending/plugin-management-seed-runtime-separation.test.ts`           |
+| `PML`        | `plugins/marketplace/plugin-management-installed-menu-layout.test.ts`                       |
 
 ## Latest targeted verification
 
@@ -266,8 +266,8 @@ case-local replay 验证 Agent 工具执行 -> 官方目录 -> 确认卡片 -> �
 
 ### 生命周期埋点（2026-10-15）
 
-| Case        | 场景                   | 用例                                         | 验证                    | 状态               |
-| ----------- | ---------------------- | -------------------------------------------- | ----------------------- | ------------------ |
+| Case        | 场景                   | 用例                                                   | 验证                    | 状态               |
+| ----------- | ---------------------- | ------------------------------------------------------ | ----------------------- | ------------------ |
 | PLM-TEL-001 | 插件安装最终结果与隐私 | `plugins/telemetry/plugin-lifecycle-telemetry.test.ts` | macOS Electron 回放通过 | pending，未加入 CI |
 
 验证批次 `desktop-e2e-20261015031949530-p54859-5f1860f2585df3f1`：真实商店详情安装成功，最终 HTTP 出口仅一条 install 结果，含 event_id 和 duration_ms，无 operation_id 和路径。手机白名单、远端同步结果与 MCP 归属由定向单测验证；Windows/Linux 和真实远端安装未运行。
@@ -911,3 +911,36 @@ P3a 之后复跑（macOS）：PLM-EXT-2B、2C、P2B、P2C（replay）`desktop-e2
 CLI `plugins.test.ts` 验证默认关闭、显式启用/停用及对应技能根与 SessionStart hook 是否装载；与 `bundled-plugins-resilience.test.ts` 共 95 项通过。共享提示窗通过 1280px/390px × 中英文 × 深浅主题的 8 组浏览器布局验收；手机没有 IAB 入口，此处仅验证共享弹窗窄屏布局。
 
 未验证：Windows/Linux 桌面、真实远端断连/重连、查询在途时切换工作区、真正移除内置资源后的安装恢复。候选保持 pending，未做人工晋升或 CI 准入。
+
+## PLM-EXT-NST：NextStep 轮尾推荐（2026-11-20）
+
+官方候选入口：`packages/desktop/test/e2e/plugins/extensions/manual-review/pending/plugin-management-nextstep-turn-footer.test.ts`。
+场景与断言见 [case catalog](../plugin-management-lifecycle-case-catalog.md) 的 PLM-EXT-NST 与
+[NextStep 轮尾推荐设计](../superpowers/specs/2026-11-20-nextstep-turn-footer-design.md)。扩展 API 1.5.0 的轮尾协议、宿主和插件已有实现；当前桌面候选只包含 NST-02 的切换会话读取与 NST-04 的单次刷新冒烟，未覆盖这两条的全部语义。
+
+Windows 定向回放两次都在 WDIO `onPrepare` 的 `build-windows-runtime-host.mjs --if-windows --ensure` 步骤中止（runs `desktop-e2e-20261120043101096-p52220-95e6bcd09c745408`、`desktop-e2e-20261120043525744-p47664-359616696d6b1583`）。独立运行该准备命令通过，组合运行失败原因未确认。未进入测试体，未观测到界面或模型请求；fixture 检查通过不构成运行证据。所有用例仍未转正，且无 Docker/CI admission；按 [Admission rules](#admission-rules) 处理。
+
+| Case   | 场景                                                              | UI automation | Runtime/storage evidence | Human review | Formal spec | Linux Docker | macOS CI | Windows CI |
+| ------ | ----------------------------------------------------------------- | ------------- | ------------------------ | ------------ | ----------- | ------------ | -------- | ---------- |
+| NST-01 | 多片段/工具/队列切分的单次触发                                    | not run       | not captured             | pending      | blocked     | blocked      | blocked  | blocked    |
+| NST-02 | 完成通知重放、切回、重开、重启后只读且计数为 1                    | not run       | not captured             | pending      | blocked     | blocked      | blocked  | blocked    |
+| NST-03 | 旧会话打开：点击才从 0 变 1，更早回复不补生成                     | not run       | not captured             | pending      | blocked     | blocked      | blocked  | blocked    |
+| NST-04 | 连续刷新、重复 `requestId`、`permit` 二次调用被拒、新刷新追加版本 | not run       | not captured             | pending      | blocked     | blocked      | blocked  | blocked    |
+| NST-05 | 特殊重放类失败不重发；插件重启围栏结算 `unknown`                  | not run       | not captured             | pending      | blocked     | blocked      | blocked  | blocked    |
+| NST-06 | 重试/编辑/分叉后旧建议 `stale` / `blocked`                        | not run       | not captured             | pending      | blocked     | blocked      | blocked  | blocked    |
+| NST-07 | 点击建议经 CLI 串行 admission 最多一次 `accepted`；草稿与权限不变 | not run       | not captured             | pending      | blocked     | blocked      | blocked  | blocked    |
+| NST-08 | 切模型后查看不调用、刷新按新模型计量                              | not run       | not captured             | pending      | blocked     | blocked      | blocked  | blocked    |
+| NST-09 | 远程工作区/手机远控回放不渲染、不重复生成                         | not run       | not captured             | pending      | blocked     | blocked      | blocked  | blocked    |
+
+视觉更新候选浏览器入口：`packages/ui/test/browser/manual-review/pending/nextstep-turn-footer-visual.test.mjs`。它以隔离受控服务驱动真实组件和 Hook，不能证明 Desktop Host、插件存储或模型调用。2026-11-20 本地执行 `node --test packages/ui/test/browser/manual-review/pending/nextstep-turn-footer-visual.test.mjs`，9/9 通过；截图位于 `packages/desktop/.e2e-artifacts/nextstep-turn-footer-visual/`。下表仅登记已执行的浏览器子集，完整验收仍待桌面运行与人工审核；初读延迟由隔离夹具受控挂起，不以普通快速读冒充等待态证据。
+
+| Case       | 验收维度                                             | 浏览器证据                                                                                                           | Desktop / 存储证据 |
+| ---------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| NST-VIS-01 | 纵向 2–4 条；Unicode 码点长度升序，同长稳定          | partial：受控服务 3/4 条排序及 390px 布局，截图 `nst-vis-a-ready-zh-CN-light.png`、`nst-vis-g-narrow-dark-en-US.png` | not run            |
+| NST-VIS-02 | 旧缓存五条展示四条，ID、版本和数据不变               | partial：受控响应投影、ID 与版本，截图 `nst-vis-b-legacy-five-zh-CN-light.png`；不证明持久数据未变                   | not run            |
+| NST-VIS-03 | 初读、刷新、生成状态及读取失败重试                   | partial：受控延迟/失败与重试，截图 `nst-vis-c-refreshed-v2-zh-CN-light.png`；提交等待未测                            | not run            |
+| NST-VIS-04 | 维度图标、pointer、hover、焦点与提示词               | partial：受控维度图标、pointer、焦点和 tooltip；未逐项验证所有语义维度与 hover 色值                                  | not run            |
+| NST-VIS-05 | 200ms 入场、30ms 错峰、同版本不重播与 reduced-motion | partial：运行时动画采样及 reduced-motion，截图 `nst-vis-f-reduced-motion-zh-CN-light.png`；版本切换动画未单独采样    | not run            |
+| NST-VIS-06 | 切回只读、失效、迟到读与刷新回执版本竞态             | partial：受控重挂载、通知和失败/迟到回执；不证明物理模型调用数                                                       | not run            |
+
+NST-09 需要远程工作区或手机远控夹具；未实际运行前不得由代码结构推断标记覆盖。

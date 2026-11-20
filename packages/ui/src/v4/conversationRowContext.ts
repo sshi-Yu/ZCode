@@ -56,6 +56,12 @@ export interface ConversationRowRenderContext {
   inSubagentDrilldown?: boolean;
   /** 手机 /remote 紧凑模式：隐藏外部 App 打开下拉，只保留应用内预览。 */
   compactForRemoteControl?: boolean;
+  /** SessionPane 仅为本机、可写、主对话开启；Host 仍是轮尾资格的最终 owner。 */
+  turnFooterEnabled?: boolean;
+  /** Timeline 指定最新成功用户轮的唯一即时行定位。 */
+  turnFooterRowId?: number;
+  /** 有更新的运行中用户轮时，旧推荐不能发送。 */
+  turnFooterSubmissionBlocked?: boolean;
   /** 当前 session 正在 compact 或 goal verify；专用状态 UI 独占进度反馈。 */
   chatLoadingBlockedByActiveWork?: boolean;
   /** 当前 session 正在等待权限确认或 AskUserQuestion 回答，隐藏底部 ChatLoading。 */

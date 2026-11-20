@@ -696,6 +696,22 @@ export interface ZCodeAgentStorageStartupSnapshot {
 }
 
 export interface IZCodeAgentService {
+  /** live-only：订阅形式 agent.onTurnFooterCompleted(listener)，不重放历史事实。 */
+  readonly onTurnFooterCompleted: Event<
+    import("@zcode/shared/zcode-protocol-v4").TurnFooterCompleted
+  >;
+  resolveTurnFooterAnchor(
+    input: import("@zcode/shared/zcode-protocol-v4").TurnFooterResolveAnchorParams,
+  ): Promise<import("@zcode/shared/zcode-protocol-v4").TurnFooterAnchor | null>;
+  readTurnFooterHistory(
+    input: import("@zcode/shared/zcode-protocol-v4").TurnFooterHistoryParams,
+  ): Promise<import("@zcode/shared/zcode-protocol-v4").TurnFooterHistory>;
+  generateTurnFooterText(
+    input: import("@zcode/shared/zcode-protocol-v4").TurnFooterGenerateTextParams,
+  ): Promise<import("@zcode/shared/zcode-protocol-v4").TurnFooterGenerateTextResult>;
+  submitTurnFooterSuggestion(
+    input: import("@zcode/shared/zcode-protocol-v4").TurnFooterSubmitSuggestionParams,
+  ): Promise<{ status: "accepted" | "stale" | "blocked" }>;
   /** 控制面不需要账号或模型，且不发送普通协议请求。 */
   prepareStorage(params: ZCodeAgentWorkspaceTarget): Promise<void>;
   getStorageStartupState(

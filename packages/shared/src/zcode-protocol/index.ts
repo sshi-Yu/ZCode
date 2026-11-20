@@ -1,3 +1,4 @@
+export * from "../zcode-protocol-v4/turn-footer.js";
 import { requestVerificationReasons } from "../request-security-edition/verification-policy.js";
 import { zcodeProtocolTraceSchema } from "./trace.js";
 export * from "../app-control/contract.js";
@@ -159,6 +160,8 @@ export const zcodeRuntimeCapabilitiesSchema = z.object({
    * 旧 CLI 对 sendText 整条拒绝、对 firstInput 静默剥掉来源，Host 据此决定能否代扩展发消息
    * （apps/zcode-cli/docs/design/v2/conversation-input-source.md §7）。
    */
+  /** CLI 会在串行 admission 重查 expectedTurnFooterAnchor；缺失时禁止轮尾发送。 */
+  turnFooterAnchorGuard: z.boolean().optional(),
   extensionInputSource: z.boolean().optional(),
   /**
    * CLI 认识对话引用上的 comment / agent 字段（选区批注）。旧 CLI 的 quote schema 非 strict，

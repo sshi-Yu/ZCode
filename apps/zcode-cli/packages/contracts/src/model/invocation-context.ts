@@ -5,6 +5,7 @@ import type { ModelApiCallObservation } from "../telemetry/index.js";
 import type { TraceContext } from "../tracing/tracer.js";
 import type {
   ModelRequestAdmission,
+  ModelRequestRedispatchPolicy,
   ModelRequestSessionType,
   ModelRetryBudget,
   ModelStatusSink,
@@ -71,6 +72,11 @@ export interface ModelInvocationContext {
   modelRequestSessionFeatures?: readonly ModelRequestSessionFeature[];
   /** 重试预算档位；runtime 按 taskType 决定，adapter 据此放宽瞬态失败的放弃条件。 */
   modelRetryBudget?: ModelRetryBudget;
+  /**
+   * 请求级物理派发策略；调用点按能力显式声明（如 NextStep 轮尾生成 no-redispatch）。
+   * runtime 层不绑定该字段，调用层设置直达 adapter。
+   */
+  modelRequestRedispatchPolicy?: ModelRequestRedispatchPolicy;
   /** 准入端口；runtime 从 deps 带入，adapter 每次尝试先 acquire。 */
   modelRequestAdmission?: ModelRequestAdmission;
   statusSink?: ModelStatusSink;

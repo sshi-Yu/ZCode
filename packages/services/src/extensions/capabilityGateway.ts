@@ -36,6 +36,7 @@ import type { ModelsBackend } from "#src/extensions/modelsBackend.js";
 import type { SettingsBackend } from "#src/extensions/settingsBackend.js";
 import type { ExtensionViewRelay } from "#src/extensions/viewRelay.js";
 import type { WorkbenchState } from "#src/extensions/workbenchState.js";
+import type { TurnFooterRelay } from "#src/extensions/turnFooter.js";
 
 // 能力网关（docs/plugins/extension-host.md §3.5、§7.2、§17.1）：插件访问 App 的唯一入口。
 // 收到 call / subscribe 后依次：查表 → 按 input 校验 → 清单声明了档位吗（not-declared）→
@@ -77,6 +78,7 @@ export interface CapabilityBackends {
   drafts: ExtensionDraftRelay;
   grantRequests: GrantRequestRelay;
   notifications: NotificationRelay;
+  turnFooter: TurnFooterRelay;
 }
 
 export function createCapabilityHandlers(backends: CapabilityBackends) {
@@ -219,6 +221,10 @@ export function createCapabilityHandlers(backends: CapabilityBackends) {
     "sessions.setPermissionMode": (input, call) => backends.controls.setPermissionMode(call, input),
     // 只写调用方自己的插件（§18.1 H1）：插件 id 同样来自网关。
     "settings.update": (input, call) => backends.settings.update(call.pluginId, input),
+    // 轮尾专用端口再核验随机 nonce、唯一 provider 与连接代际；通用会话读权限不授权生成。
+    "turnFooter.history": (input, call) => backends.turnFooter.history(input, call),
+    "turnFooter.generate": (input, call) => backends.turnFooter.generate(input, call),
+    "turnFooter.invalidate": (input, call) => backends.turnFooter.invalidate(input, call),
   } satisfies CapabilityHandlerMap;
 }
 

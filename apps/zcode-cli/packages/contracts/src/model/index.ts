@@ -53,6 +53,26 @@ export const ModelRetryBudget = {
 export type ModelRetryBudget = (typeof ModelRetryBudget)[keyof typeof ModelRetryBudget];
 
 /**
+ * 请求级「物理派发」策略（runtime-only）。
+ * - `default`：adapter 现行行为——鉴权刷新、thinking 签名修复、off-peak 排队与瞬态退避都可能在
+ *   首次请求之外追加物理请求。
+ * - `no-redispatch`：本次逻辑请求在整个生命周期内**至多派发一次物理请求**；任何失败（含鉴权刷新
+ *   重试、anthropic 签名修复重试、off-peak 排队与空补全重试）都不允许再发第二次，首次失败即上抛。
+ *   给「一次受理最多发起一次独立请求」的能力（NextStep 轮尾生成）使用：provider 是否收到未知时由
+ *   调用方记 `unknown`，等待用户手动刷新，不自动重发。
+ *
+ * 该策略隐含 single-attempt 预算（maxAttempts 收敛为 1）。目前只在 generateText（非流式）执行面
+ * 强制执行；streamText 保持既有行为。
+ */
+export const ModelRequestRedispatchPolicy = {
+  Default: "default",
+  NoRedispatch: "no-redispatch",
+} as const;
+
+export type ModelRequestRedispatchPolicy =
+  (typeof ModelRequestRedispatchPolicy)[keyof typeof ModelRequestRedispatchPolicy];
+
+/**
  * 一次模型请求尝试的准入票据（runtime-only）。
  *
  * 它同时是**这一次尝试**的状态事件汇：runner 把该尝试的 ModelNetworkStatus 事件
@@ -720,6 +740,11 @@ export interface ModelTextRequest extends ModelRequestSettings {
    * 不进 JSON schema、不进 provider 请求。缺省即 `default`。
    */
   modelRetryBudget?: ModelRetryBudget;
+  /**
+   * Runtime-only 请求级物理派发策略（见 {@link ModelRequestRedispatchPolicy}）。与 modelRetryBudget
+   * 同族：不进 JSON schema、不进 provider 请求。缺省即 `default`，adapter 行为逐字不变。
+   */
+  modelRequestRedispatchPolicy?: ModelRequestRedispatchPolicy;
   /**
    * Runtime-only 准入端口（见 {@link ModelRequestAdmission}）：在场时 runner 每次尝试先 acquire、
    * 结束即 release。与 statusSink 同族：不进 JSON schema、不进 provider 请求。

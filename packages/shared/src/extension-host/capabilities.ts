@@ -59,6 +59,13 @@ import {
 } from "#src/extension-host/interactions.js";
 import { scopeInputSchema } from "#src/extension-host/slots.js";
 import {
+  turnFooterChangeSchema,
+  turnFooterGenerateInputSchema,
+  turnFooterGenerateResultSchema,
+  turnFooterHistoryInputSchema,
+  turnFooterHistoryResultSchema,
+} from "#src/extension-host/turnFooter.js";
+import {
   workbenchSessionSchema,
   workbenchStartDraftInputSchema,
 } from "#src/extension-host/workbench.js";
@@ -395,6 +402,28 @@ export const EXTENSION_CAPABILITIES = {
     output: notificationsShowResultSchema,
     backend: "renderer",
     grant: "notifications",
+  },
+  // 宿主只随实时完成或用户刷新签发许可，查询结果不签发。
+  "turnFooter.history": {
+    kind: "call",
+    input: turnFooterHistoryInputSchema,
+    output: turnFooterHistoryResultSchema,
+    backend: "service",
+    grant: "sessions.read",
+  },
+  "turnFooter.generate": {
+    kind: "call",
+    input: turnFooterGenerateInputSchema,
+    output: turnFooterGenerateResultSchema,
+    backend: "service",
+    grant: "turnFooter.generate",
+  },
+  "turnFooter.invalidate": {
+    kind: "call",
+    input: turnFooterChangeSchema,
+    output: z.undefined(),
+    backend: "service",
+    grant: "turnFooter.generate",
   },
   // 请 Renderer 打开扩展视图并等回执（§8）。ctx 上的入口是本地部分的 ctx.views.open。
   "views.open": {

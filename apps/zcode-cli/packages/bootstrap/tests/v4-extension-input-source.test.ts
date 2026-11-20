@@ -258,6 +258,44 @@ describe("extension 输入来源（集成：sqlite + server + app）", { timeout
     await rm(root, { force: true, recursive: true });
   });
 
+  it("turn footer resolves a durable anchor, reads bounded history and submits literal slash text", async () => {
+    const booted = await bootServer(join(root, "turn-footer.db"), root);
+    try {
+      const capabilities = await requestResult(booted.server, { id: "footer-capability", method: zcodeProtocolMethods.runtimeCapabilities, params: {} });
+      expect(capabilities).toMatchObject({ turnFooterAnchorGuard: true });
+      const created = commandAckSchema.parse(await requestResult(booted.server, command("footer-create", "createSession", {
+        workspaceId: project, firstInput: { text: FIRST_TEXT, modelSelection: MODEL },
+      })));
+      if (created.result?.type !== "createSession") throw new Error("Expected createSession");
+      const sessionId = created.result.sessionId;
+      await waitFor(async () => (await snapshotOf(booted, sessionId)).control.phase === "completedSuccess");
+      const snapshot = await snapshotOf(booted, sessionId);
+      const assistant = snapshot.rows.window.find((row) => row.kind === "assistantText" && row.state === "complete");
+      expect(assistant).toBeDefined();
+      const anchor = await requestResult(booted.server, { id: "footer-resolve", method: V4_METHODS.turnFooterResolveAnchor,
+        params: { workspacePath: project, sessionId, rowId: assistant!.rowId } });
+      expect(anchor).toMatchObject({ sessionId, productTurnId: expect.any(String), assistantMessageId: expect.any(String) });
+      const params = { workspacePath: project, ...(anchor as Record<string, unknown>) };
+      expect(await requestResult(booted.server, { id: "footer-history", method: V4_METHODS.turnFooterReadHistory, params }))
+        .toEqual([{ role: "user", text: FIRST_TEXT }, { role: "assistant", text: ANSWER }]);
+      const before = (await booted.store.messages({ sessionID: sessionId as SessionId })).length;
+      expect(await requestResult(booted.server, { id: "footer-model", method: V4_METHODS.turnFooterGenerateText,
+        params: { ...params, text: "propose next steps", maxOutputTokens: 200 } }))
+        .toMatchObject({ status: "ok", text: ANSWER, model: MODEL_IDENTITY });
+      expect((await booted.store.messages({ sessionID: sessionId as SessionId })).length).toBe(before);
+      const text = "/goal literal suggestion";
+      const submitted = commandAckSchema.parse(await requestResult(booted.server, command("footer-submit", "sendText", {
+        text, expectedTurnFooterAnchor: anchor, source: FIRST_SOURCE,
+      }, sessionId)));
+      expect(submitted.status).toBe("accepted");
+      await waitFor(async () => (await userMessages(booted, sessionId)).length === 2);
+      expect((await userMessages(booted, sessionId)).at(-1)?.parts.some((part) => part.type === "text" && part.text === text)).toBe(true);
+      expect((await snapshotOf(booted, sessionId)).goal).toBeNull();
+      const stale = commandAckSchema.parse(await requestResult(booted.server, command("footer-stale", "sendText", { text, expectedTurnFooterAnchor: anchor }, sessionId)));
+      expect(stale).toMatchObject({ status: "stale", reasonCode: "guard.turnFooterAnchorStale" });
+    } finally { await booted.close(); }
+  });
+
   it("runtime/capabilities 声明 extensionInputSource", async () => {
     const booted = await bootServer(join(root, "capabilities.db"), root);
     try {

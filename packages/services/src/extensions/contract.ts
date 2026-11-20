@@ -11,6 +11,9 @@ import type {
   GetExtensionLogsInput,
   MentionItemsResult,
   ProvideMentionItemsInput,
+  TurnFooterChange,
+  TurnFooterRequest,
+  TurnFooterResponse,
   WorkbenchReport,
 } from "@zcode/shared/extension-host";
 import { createServiceDescriptor } from "#src/descriptors.js";
@@ -48,6 +51,10 @@ export interface IExtensionsService {
    * （要会话，草稿用预热会话）。不设计取消：seq 原样带回，Renderer 只采用最新一次。错误折成结果里的码。
    */
   provideMentionItems(input: ProvideMentionItemsInput): Promise<MentionItemsResult>;
+  /** 本地轮尾的读取、手动刷新和建议提交；可信持久锚点由 Host / CLI 解析。 */
+  turnFooter(input: TurnFooterRequest): Promise<TurnFooterResponse>;
+  /** 插件只发布失效通知；provider 或连接变化发 null，订阅者重新读取。 */
+  onDynamicTurnFooterChanged(input?: undefined): Event<TurnFooterChange | null>;
   /** 重新加载扩展：经 parentPort 请 Main 清零崩溃预算并重启扩展进程，并重读静态表。 */
   reload(): Promise<void>;
   /**
