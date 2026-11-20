@@ -1,6 +1,6 @@
 import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { clearAppData, DEFAULT_WORKSPACE } from "#e2e/helpers/desktop-app";
+import { clearAppData, clickSidePaneTabClose, DEFAULT_WORKSPACE } from "#e2e/helpers/desktop-app";
 import { resolveE2ERuntimePath } from "#e2e/helpers/e2e-runtime-paths";
 import { ensureToolCrossProductFullAccessMode } from "#e2e/helpers/conversation-session-tool-cross-product";
 import { countUpstreamRequests } from "#e2e/helpers/conversation-session-network";
@@ -570,7 +570,7 @@ describe("后台 Bash 实时输出详情", () => {
     expect(await error.getText()).toMatch(/无法读取|Could not read/);
     expect(await text()).toBe(previous);
     expect(await alive("ERROR")).toBe(true);
-    await $('[data-side-pane-tab-id^="bash-output:"][data-state="active"] button').click();
+    await clickSidePaneTabClose('[data-side-pane-tab-id^="bash-output:"][data-state="active"]');
     expect(await alive("ERROR")).toBe(true);
   });
 

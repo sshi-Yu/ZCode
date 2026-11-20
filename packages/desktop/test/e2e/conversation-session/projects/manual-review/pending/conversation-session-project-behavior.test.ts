@@ -1123,6 +1123,7 @@ async function readNavigation() {
 async function closeActiveFileTab() {
   const tab = $('[data-side-pane-tab-id][data-state="active"]');
   const id = await tab.getAttribute("data-side-pane-tab-id");
+  await tab.moveTo();
   await tab.$("button").click();
   await $(`[data-side-pane-tab-id="${id}"]`).waitForExist({ reverse: true });
 }

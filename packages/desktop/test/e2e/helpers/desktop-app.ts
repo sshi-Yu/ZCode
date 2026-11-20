@@ -298,6 +298,14 @@ export async function hoverTestIdByWebDriver(
   await element.moveTo();
 }
 
+export async function clickSidePaneTabClose(
+  selector = '[data-side-pane-tab-id][data-state="active"]',
+): Promise<void> {
+  const tab = $(selector);
+  await tab.moveTo();
+  await tab.$("button").click();
+}
+
 export async function setInputValueByTestIdDom(
   testId: string,
   value: string,

@@ -658,6 +658,36 @@ export function AnimatedSidePanePanel({
       });
     };
 
+    const handleWheel = (event: WheelEvent) => {
+      // 普通鼠标只上报纵向增量。标签条还能滚动时才将它转为横向位移，保留原生横向手势和缩放。
+      if (
+        !event.cancelable ||
+        event.deltaX ||
+        !event.deltaY ||
+        event.shiftKey ||
+        event.ctrlKey ||
+        event.metaKey
+      ) {
+        return;
+      }
+      const maxScrollLeft = viewport.scrollWidth - viewport.clientWidth;
+      if (maxScrollLeft <= 0) return;
+
+      const deltaUnit =
+        event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? viewport.clientWidth
+          : event.deltaMode === WheelEvent.DOM_DELTA_LINE
+            ? 16
+            : 1;
+      const currentLeft = viewport.scrollLeft;
+      const nextLeft = Math.min(maxScrollLeft, Math.max(0, currentLeft + event.deltaY * deltaUnit));
+      if (nextLeft === currentLeft) return;
+
+      event.preventDefault();
+      viewport.scrollLeft = nextLeft;
+    };
+    viewport.addEventListener("wheel", handleWheel, { passive: false });
+
     updateOverflowState();
     viewport.addEventListener("scroll", updateOverflowState, {
       passive: true,
@@ -666,6 +696,7 @@ export function AnimatedSidePanePanel({
     if (typeof ResizeObserver === "undefined") {
       window.addEventListener("resize", debouncedUpdate);
       return () => {
+        viewport.removeEventListener("wheel", handleWheel);
         viewport.removeEventListener("scroll", updateOverflowState);
         window.removeEventListener("resize", debouncedUpdate);
         if (rafId !== null) cancelAnimationFrame(rafId);
@@ -682,6 +713,7 @@ export function AnimatedSidePanePanel({
 
     return () => {
       resizeObserver.disconnect();
+      viewport.removeEventListener("wheel", handleWheel);
       viewport.removeEventListener("scroll", updateOverflowState);
       window.removeEventListener("resize", debouncedUpdate);
       if (rafId !== null) cancelAnimationFrame(rafId);

@@ -37,6 +37,7 @@ import {
 } from "@zcode/shared/test-ids";
 import {
   clearAppData,
+  clickSidePaneTabClose,
   setInputValueByTestIdDom,
   clickTestIdByDom,
   waitForWorkspaceApp,
@@ -190,7 +191,7 @@ describe("虚拟项目", () => {
     await browser.waitUntil(async () => (await panel.getText()).includes("E2E_PROJECT_ROW_1.txt"));
     expect(await panel.getText()).not.toContain("E2E_PROJECT_ROW_0.txt");
     // 项目文件现已在右侧文件标签展示，关闭当前标签回到原草稿。
-    await $('[data-side-pane-tab-id][data-state="active"] button[aria-label]').click();
+    await clickSidePaneTabClose();
     await panel.waitForExist({ reverse: true });
     await row.click({ button: "right" });
     expect(await $('[data-testid="virtual-project-edit"]').isExisting()).toBe(true);
@@ -199,7 +200,7 @@ describe("虚拟项目", () => {
     await panel.waitForDisplayed();
     await browser.waitUntil(async () => (await panel.getText()).includes("E2E_PROJECT_ROW_0.txt"));
     // 项目文件现已在右侧文件标签展示，关闭当前标签回到原草稿。
-    await $('[data-side-pane-tab-id][data-state="active"] button[aria-label]').click();
+    await clickSidePaneTabClose();
     await row.moveTo();
     await row.$('[data-testid="virtual-project-create-task"]').click();
     await waitForWorkspaceApp(paths[0], 30_000);
@@ -1018,7 +1019,7 @@ describe("虚拟项目", () => {
       await browser.waitUntil(async () =>
         (await remoteFiles.getText()).includes("E2E_PROJECT_REMOTE_FILE.txt"),
       );
-      await $('[data-side-pane-tab-id][data-state="active"] button[aria-label]').click();
+      await clickSidePaneTabClose();
       await remoteFiles.waitForExist({ reverse: true });
       await renamed.moveTo();
       await renamed.$('[data-testid="virtual-project-create-task"]').click();

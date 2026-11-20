@@ -678,9 +678,32 @@ describe("Side Pane Tab responsive interactions", () => {
     expect(Math.min(...metrics.tabWidths)).toBeGreaterThanOrEqual(59.5);
     expect(metrics.scrollWidth).toBeGreaterThan(metrics.clientWidth + 1);
     expect(metrics.addInsideViewport).toBe(false);
+
+    const viewport = await $(VIEWPORT_SELECTOR);
+    const readScrollLeft = () =>
+      browser.execute((selector) => {
+        return document.querySelector(selector)!.scrollLeft;
+      }, VIEWPORT_SELECTOR);
+    const readAddLeft = () =>
+      browser.execute((selector) => {
+        return document.querySelector(selector)!.getBoundingClientRect().left;
+      }, ADD_TRIGGER_SELECTOR);
+    const initialScroll = await readScrollLeft();
+    const addLeft = await readAddLeft();
+    const deltaY = initialScroll > 0 ? -80 : 80;
+    await browser.action("wheel").scroll({ origin: viewport, deltaY }).perform();
+    await browser.waitUntil(async () => (await readScrollLeft()) !== initialScroll, {
+      timeoutMsg: "普通滚轮未横向滚动标签条",
+    });
+    const scrolled = await readScrollLeft();
+    await browser.action("wheel").scroll({ origin: viewport, deltaY: -deltaY }).perform();
+    await browser.waitUntil(async () => (await readScrollLeft()) !== scrolled, {
+      timeoutMsg: "反向滚轮未横向滚动标签条",
+    });
+    expect(await readAddLeft()).toBeCloseTo(addLeft, 0);
   });
 
-  it("SPT-E2E-004 shows close on active or hovered tabs without activating an inactive tab", async () => {
+  it("SPT-E2E-004 swaps the leading icon for close without activating an inactive tab", async () => {
     await ensureTerminalTabCount(2);
     await setTabsViewportWidth(360);
     await browser.execute(() => (document.activeElement as HTMLElement | null)?.blur());
@@ -691,9 +714,11 @@ describe("Side Pane Tab responsive interactions", () => {
       return tabs.map((tab) => {
         const closeButton = tab.querySelector<HTMLButtonElement>("button");
         const style = closeButton ? window.getComputedStyle(closeButton) : null;
+        const icon = tab.querySelector("svg.lucide-square-terminal")!;
         return {
           id: tab.dataset.sidePaneTabId ?? "",
           active: tab.dataset.state === "active",
+          iconVisible: icon.checkVisibility({ opacityProperty: true }),
           closeVisible:
             Boolean(closeButton) &&
             style?.display !== "none" &&
@@ -705,7 +730,9 @@ describe("Side Pane Tab responsive interactions", () => {
     const inactive = before.find((tab) => !tab.active);
     const active = before.find((tab) => tab.active);
 
-    expect(active?.closeVisible).toBe(true);
+    expect(active?.iconVisible).toBe(true);
+    expect(inactive?.iconVisible).toBe(true);
+    expect(active?.closeVisible).toBe(false);
     expect(inactive?.closeVisible).toBe(false);
     expect(inactive?.id).toBeTruthy();
     expect(active?.id).toBeTruthy();
@@ -714,23 +741,37 @@ describe("Side Pane Tab responsive interactions", () => {
     const readContent = () =>
       browser.execute((id) => {
         const tab = document.querySelector(`[data-side-pane-tab-id="${id}"]`)!;
+        const icon = tab.querySelector("svg.lucide-square-terminal")!;
+        const close = tab.querySelector("button")!;
         const content = tab.querySelector("[data-side-pane-tab-content]")!;
         const title = tab.querySelector("[data-side-pane-tab-title]")!;
+        const center = (element: Element) => {
+          const { x, y, width, height } = element.getBoundingClientRect();
+          return [x + width / 2, y + height / 2];
+        };
         return {
+          tabWidth: tab.getBoundingClientRect().width,
           width: content.getBoundingClientRect().width,
           left: title.getBoundingClientRect().left,
+          iconVisible: icon.checkVisibility({ opacityProperty: true }),
+          iconCenter: center(icon),
+          closeCenter: center(close),
           mask: getComputedStyle(content).maskImage,
           textOverflow: getComputedStyle(title).textOverflow,
         };
       }, inactive!.id);
     const idleContent = await readContent();
     await inactiveTab.moveTo();
+    await browser.waitUntil(async () => !(await readContent()).iconVisible);
     const hoveredContent = await readContent();
     expect(idleContent.textOverflow).toBe("clip");
     expect(idleContent.mask).not.toBe("none");
-    expect(hoveredContent.mask).not.toBe(idleContent.mask);
+    expect(hoveredContent.mask).toBe(idleContent.mask);
+    expect(hoveredContent.tabWidth).toBe(idleContent.tabWidth);
     expect(hoveredContent.width).toBe(idleContent.width);
     expect(hoveredContent.left).toBe(idleContent.left);
+    expect(hoveredContent.closeCenter[0]).toBeCloseTo(idleContent.iconCenter[0]!, 0);
+    expect(hoveredContent.closeCenter[1]).toBeCloseTo(idleContent.iconCenter[1]!, 0);
     const closeButton = await inactiveTab.$("button");
     await closeButton.waitForDisplayed({ timeout: 5000 });
     await closeButton.click();
@@ -753,6 +794,29 @@ describe("Side Pane Tab responsive interactions", () => {
         ),
       { timeout: 5_000, timeoutMsg: "关闭 inactive tab 后 active tab 发生变化" },
     );
+
+    await ensureTerminalTabCount(2);
+    await $(`[data-testid="${TID_WORKSPACE_HEADER}"]`).moveTo();
+    const keyboardTarget = await $(`${TAB_SELECTOR}[data-state="inactive"] button`);
+    const keyboardTargetId = await browser.execute((selector) => {
+      const close = document.querySelector<HTMLButtonElement>(
+        `${selector}[data-state="inactive"] button`,
+      )!;
+      close.focus();
+      return close.closest<HTMLElement>(selector)!.dataset.sidePaneTabId!;
+    }, TAB_SELECTOR);
+    const keyboardActiveId = await $(`${TAB_SELECTOR}[data-state="active"]`).getAttribute(
+      "data-side-pane-tab-id",
+    );
+    expect(keyboardActiveId).not.toBe(keyboardTargetId);
+    expect(Number((await keyboardTarget.getCSSProperty("opacity")).value)).toBe(1);
+    await browser.keys("Enter");
+    await $(`${TAB_SELECTOR}[data-side-pane-tab-id="${keyboardTargetId}"]`).waitForExist({
+      reverse: true,
+    });
+    expect(
+      await $(`${TAB_SELECTOR}[data-state="active"]`).getAttribute("data-side-pane-tab-id"),
+    ).toBe(keyboardActiveId);
   });
 
   it("SPT-E2E-005 restarts the 1500ms tooltip delay on another tab", async () => {
@@ -964,13 +1028,18 @@ describe("Side Pane Tab responsive interactions", () => {
   it("SPT-E2E-009 opens a real new tab and replaces it with a tool", async () => {
     await ensureSidePaneExpanded();
     const active = () => $('[data-side-pane-tab-id][data-state="active"]');
+    const closeActive = async () => {
+      const tab = await active();
+      await tab.moveTo();
+      await tab.$("button").click();
+    };
     while ((await readTabCount()) > 1) {
       const count = await readTabCount();
-      await (await active()).$("button").click();
+      await closeActive();
       await browser.waitUntil(async () => (await readTabCount()) === count - 1);
     }
     if (!/新标签页|New tab/.test(await (await active()).getText())) {
-      await (await active()).$("button").click();
+      await closeActive();
       await browser.waitUntil(async () => (await readTabCount()) === 0);
       await $(
         `[data-testid="${TID_WORKSPACE_HEADER}"] [data-testid="${TID_SIDE_PANE_TOGGLE}"]`,
@@ -989,9 +1058,9 @@ describe("Side Pane Tab responsive interactions", () => {
     await $(ADD_TRIGGER_SELECTOR).click();
     await browser.waitUntil(async () => (await readTabCount()) === 2);
     expect(await (await active()).getText()).toMatch(/新标签页|New tab/);
-    await (await active()).$("button").click();
+    await closeActive();
     await browser.waitUntil(async () => (await readTabCount()) === 1);
-    await (await active()).$("button").click();
+    await closeActive();
     await browser.waitUntil(async () => (await readTabCount()) === 0);
     await $(
       `[data-testid="${TID_WORKSPACE_HEADER}"] [data-testid="${TID_SIDE_PANE_TOGGLE}"]`,
@@ -1043,9 +1112,12 @@ describe("Side Pane Tab responsive interactions", () => {
     await first.click();
     expect(await first.getAttribute("data-state")).toBe("active");
     await $('[data-state="active"] [data-side-pane-open-tab-item="browser"]').waitForDisplayed();
+    await first.moveTo();
     await first.$("button").click();
     await browser.waitUntil(async () => (await readTabCount()) === 2);
-    await $(`[data-side-pane-tab-id="${ids[1]}"] button`).click();
+    const second = await $(`[data-side-pane-tab-id="${ids[1]}"]`);
+    await second.moveTo();
+    await second.$("button").click();
     await browser.waitUntil(async () => (await readTabCount()) === 1);
   });
 });

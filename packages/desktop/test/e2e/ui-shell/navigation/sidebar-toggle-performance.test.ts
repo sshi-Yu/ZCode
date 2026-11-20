@@ -2,7 +2,7 @@ import { startElectronWindowRecording } from "#e2e/helpers/electron-window-recor
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { prepareV4ConversationE2E } from "#e2e/helpers/v4-conversation";
-import { clearAppData } from "#e2e/helpers/desktop-app";
+import { clearAppData, clickSidePaneTabClose } from "#e2e/helpers/desktop-app";
 import { clearRendererViewport, setRendererViewport } from "#e2e/helpers/renderer-viewport";
 
 // macOS 开关没有 test id；使用两个受测语言的可访问名称，避免依赖其他功能分支的标记。
@@ -160,7 +160,7 @@ describe("STF 左右侧栏开关布局性能", () => {
       await click(rightToggle);
       // 下一组从新标签页开始，关闭工具沿用产品按钮。
       await click(rightToggle);
-      await $('[data-side-pane-tab-id][data-state="active"] button').click();
+      await clickSidePaneTabClose();
       await settle();
       await click(rightToggle);
       await $('[data-state="active"] [data-side-pane-open-tab-item="browser"]').click();
@@ -180,7 +180,7 @@ describe("STF 左右侧栏开关布局性能", () => {
           "data-side-pane-tab-id",
         ),
       ).toBe(browserTab);
-      await $('[data-side-pane-tab-id][data-state="active"] button').click();
+      await clickSidePaneTabClose();
       await browser.waitUntil(async () => (await geometry()).right <= 1);
       expect(
         await browser.execute(

@@ -11,7 +11,7 @@ import {
   TID_SIDE_PANE_FULL_VIEW_TOGGLE,
   TID_SIDE_PANE_FULL_VIEW_HOST,
 } from "@zcode/shared/test-ids";
-import { clearAppData, getE2EAppDataPaths } from "#e2e/helpers/desktop-app";
+import { clearAppData, clickSidePaneTabClose, getE2EAppDataPaths } from "#e2e/helpers/desktop-app";
 import {
   getV4PaneSnapshot,
   waitForV4Pane,
@@ -326,7 +326,7 @@ describe("PLM-UI-001 UI 插件市场与项目配置", () => {
       expect(await getV4ComposerText()).toBe("unsent draft text");
       await step("06-main-nav-opens-draft-ui");
       // 草稿右侧市场复用同一页面；关闭可见标签不释放 guest。
-      await browser.$('[data-side-pane-tab-id^="plugin-ui:"] button').click();
+      await clickSidePaneTabClose('[data-side-pane-tab-id^="plugin-ui:"]');
       await openSidePaneMarket();
       await clickPluginControl("plugin-store-open-ui", { pluginId: PLUGIN_LIFECYCLE_ID });
       await browser.$('[data-side-pane-tab-id^="plugin-ui:"]').waitForDisplayed();
@@ -531,7 +531,7 @@ describe("PLM-UI-001 UI 插件市场与项目配置", () => {
         .waitForDisplayed({ timeout: 15000 });
       await step("11-side-pane-manage-open-button");
       await clickPluginControl("plugin-store-manage-back");
-      await browser.$('[data-side-pane-tab-id="plugin-market"] button').click();
+      await clickSidePaneTabClose('[data-side-pane-tab-id="plugin-market"]');
 
       // 项目内暂停：两个市场均提供启用并打开；右侧市场按钮显示「启用」，先启用再打开。
       await openPluginSettings();

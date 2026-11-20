@@ -48,14 +48,14 @@
 ### SPT-E2E-003 达到最小宽度后滚动
 
 - Setup：继续创建 Terminal tabs，使 60px 最小宽度之和超过可用空间。
-- Action：等待溢出状态更新。
-- Assertions：所有 Tab 不小于 60px；viewport 的 `scrollWidth > clientWidth`；新增按钮移到 viewport 外、固定在右侧操作区。
+- Action：等待溢出状态更新，在标签条上用普通鼠标滚轮向右滚动，再滚回起点。
+- Assertions：所有 Tab 不小于 60px；viewport 的 `scrollWidth > clientWidth`；滚轮能改变标签条的可视范围；新增按钮移到 viewport 外、固定在右侧操作区。
 
-### SPT-E2E-004 选中或 hover 时显示关闭按钮且不激活
+### SPT-E2E-004 前置图标位切换关闭按钮
 
 - Setup：至少两个 Tab，第二个为 active，第一个为 inactive。
-- Action：移开鼠标并清除焦点，检查关闭按钮可见性；hover inactive Tab 后点击其关闭按钮。
-- Assertions：active Tab 的关闭按钮可见；inactive Tab 未 hover 时隐藏、hover 后可见；inactive Tab 被关闭；原 active Tab 保持 active。
+- Action：移开鼠标并清除焦点，检查前置图标。悬停 inactive Tab 后点击图标位里的关闭按钮。另用键盘聚焦关闭按钮后按 Enter。
+- Assertions：两个标签默认显示类型图标。悬停或键盘聚焦时关闭按钮和类型图标的中心重合，标题坐标、宽度和渐隐保持稳定。关闭 inactive Tab 后原 active Tab 保持 active。
 
 ### SPT-E2E-005 Tooltip 独立等待 1500ms
 

@@ -3,7 +3,7 @@ import { useSubagents } from "@/hooks/useSubagents.js";
 import { SUBAGENT_WORKFLOW_COLOR } from "@/lib/subagentColors.js";
 import { WorkflowAgentFace } from "@/components/workflow-timeline/WorkflowAgentFace.js";
 /* oxlint-disable eslint(max-lines) -- 侧栏 Tab trigger 集中维护拖拽、上下文菜单与各类图标；本次只增加 Browser 驻留态测试属性，不为行数拆散既有交互。 */
-import { useRef, type CSSProperties } from "react";
+import { useRef, type CSSProperties, type ReactNode } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
@@ -159,34 +159,42 @@ export function SortableSidePaneTabTrigger({
           isDragging && "cursor-grabbing shadow-md",
         )}
       >
-        <SidePaneTabItemContent
-          tab={tab}
-          title={title}
-          diffBadgeLabel={diffBadgeLabel}
-          closeVisible={isActive}
-          revealCloseOnHover
-        />
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          aria-label={closeTabLabel}
-          className={cn(
-            "absolute right-1 top-1/2 -translate-y-1/2 rounded-md",
-            !isActive &&
-              "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100",
-          )}
-          onPointerDown={(event) => {
-            event.stopPropagation();
-          }}
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            onCloseTab(tab.id);
-          }}
-        >
-          <XIcon className="size-3" />
-        </Button>
+        <SidePaneTabItemContent tab={tab} title={title} diffBadgeLabel={diffBadgeLabel}>
+          <span
+            aria-hidden="true"
+            className={cn(
+              "pointer-events-none col-start-1 row-start-1 grid place-items-center group-hover:opacity-0 group-focus-within:opacity-0",
+              isActive && "[@media(hover:none)]:opacity-0",
+            )}
+          >
+            <SidePaneTabIcon tab={tab} />
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={closeTabLabel}
+            className={cn(
+              "pointer-events-none col-start-1 row-start-1 rounded-md opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100",
+              isActive &&
+                "[@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100",
+            )}
+            onPointerDown={(event) => event.stopPropagation()}
+            // Radix 会从浮出的关闭按钮接收鼠标和键盘事件，阻止冒泡以免关闭前先激活标签。
+            onMouseDown={(event) => event.stopPropagation()}
+            onFocus={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") event.stopPropagation();
+            }}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onCloseTab(tab.id);
+            }}
+          >
+            <XIcon className="size-3" />
+          </Button>
+        </SidePaneTabItemContent>
       </div>
     </TabsTrigger>
   );
@@ -232,37 +240,33 @@ function SidePaneTabItemContent({
   tab,
   title,
   diffBadgeLabel,
-  closeVisible = false,
-  revealCloseOnHover = false,
+  children,
 }: {
   tab: WorkspaceSidePaneTab;
   title: string;
   diffBadgeLabel: string;
-  closeVisible?: boolean;
-  revealCloseOnHover?: boolean;
+  children?: ReactNode;
 }) {
   return (
-    <span
-      data-side-pane-tab-content=""
-      className={cn(
-        "flex min-w-0 flex-1 items-center gap-1 overflow-hidden whitespace-nowrap [mask-image:linear-gradient(to_right,black_calc(100%-var(--tab-fade-offset)-0.5rem),transparent_calc(100%-var(--tab-fade-offset)))]",
-        closeVisible ? "[--tab-fade-offset:1.25rem]" : "[--tab-fade-offset:0px]",
-        revealCloseOnHover &&
-          "group-hover:[--tab-fade-offset:1.25rem] group-focus-within:[--tab-fade-offset:1.25rem]",
-      )}
-    >
-      <span className="flex size-4 shrink-0 items-center justify-center">
-        <SidePaneTabIcon tab={tab} />
+    <>
+      {/* 把关闭按钮放在固定的前置图标位，切换时不再压缩标题或移动渐隐区域。 */}
+      <span className="grid size-5 shrink-0 place-items-center">
+        {children ?? <SidePaneTabIcon tab={tab} />}
       </span>
-      <span data-side-pane-tab-title="" className="shrink-0 whitespace-nowrap">
-        {title}
-      </span>
-      {isDiffPreviewTab(tab) ? (
-        <span className="ml-0.5 shrink-0 rounded-full border border-border bg-surface px-1 py-0 text-ui-xs leading-3 text-foreground-subtle">
-          {diffBadgeLabel}
+      <span
+        data-side-pane-tab-content=""
+        className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden whitespace-nowrap [mask-image:linear-gradient(to_right,black_calc(100%-0.5rem),transparent_100%)]"
+      >
+        <span data-side-pane-tab-title="" className="shrink-0 whitespace-nowrap">
+          {title}
         </span>
-      ) : null}
-    </span>
+        {isDiffPreviewTab(tab) ? (
+          <span className="ml-0.5 shrink-0 rounded-full border border-border bg-surface px-1 py-0 text-ui-xs leading-3 text-foreground-subtle">
+            {diffBadgeLabel}
+          </span>
+        ) : null}
+      </span>
+    </>
   );
 }
 

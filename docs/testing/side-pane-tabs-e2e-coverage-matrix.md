@@ -86,8 +86,8 @@ STF01–04 为 accepted，候选仍为 `ui-shell/navigation/sidebar-toggle-perfo
 - 本轮小重构回归：552/552 相关单测；原侧栏交互 7 通过、1 非 macOS 窗口控件用例跳过（`desktop-e2e-20260930-062902-680`）；完整权限 22/22（`desktop-e2e-20260930-063214-472`）。根 typecheck、E2E typecheck、lint（63 个已有 warning）、architecture check 和变更代码格式检查通过。
 - 修复前证据：Hook 7/8 失败；旧构建 `desktop-e2e-20260930-061702-522` 在 B 关闭其他后找不到 A 设置 tab。快捷 Browser 入口遗漏工作区另有先红后绿的单测。运行报告与逐次日志：`packages/desktop/.e2e-artifacts/side-pane-scope-20260930/README.md`。
 
-- SPT-E2E-004 验证选中 tab 显示关闭按钮、未选中且未 hover 时隐藏，hover 后通过真实鼠标点击关闭且不激活该 tab；键盘 focus-within 也显示关闭按钮，触屏通过先选中再关闭。
-- SPT-E2E-004 同时检查 item-content 使用 mask、文字不使用 ellipsis，hover 时 mask 改变而内容宽度和文字位置不变。
+- SPT-E2E-003 补验普通鼠标滚轮能将溢出的标签条向两个方向滚动，新增按钮保持固定。
+- SPT-E2E-004 改验悬停和键盘聚焦时关闭按钮替换前置图标。标签宽度、标题位置与渐隐保持稳定，关闭 inactive 标签后保留原 active 标签。Windows Electron 的滚轮、同位切换和键盘关闭断言已通过，同轮共 9 条定向用例，运行记录为 `packages/desktop/.e2e-artifacts/desktop-e2e-20261119084900169-p40304-f4989de18cf23fd3/summary.md`。触屏关闭待验。
 - SPT-E2E-001 同时检查 Electron 中 Side Header 的窗口拖拽 CSS 区域，以及标签、按钮的 no-drag 排除；既有菜单、关闭交互继续回归。此断言不替代操作系统原生窗口位移验证。
 - 2026-09-04 Side Header 修复回归：`desktop-e2e-20260904085528667-p35124-05b2c42316ba4c37`，7/7 通过；typecheck、E2E typecheck、lint 通过（41 个已有警告）。测试展开条件改为真实面板宽度与透明度；Tooltip 使用语义节点检查，避免持久挂载 DOM、标题前缀和屏幕阅读器副本导致误判。Windows/Linux 原生窗口位移尚未独立验证。
 - 物理宽度、scroll metrics、DOM containment 和可见性由 Electron WebDriver 读取真实渲染结果。
