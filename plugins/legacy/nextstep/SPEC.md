@@ -2,6 +2,8 @@
 
 本目录实现既有 `docs/superpowers/specs/2026-11-20-nextstep-turn-footer-design.md` 的插件部分，以本次冻结的 1.5.0 契约为准。宿主接线、渲染和点击发送均不属于本目录。插件不发聊天消息，不访问网络、凭据或会话数据库。
 
+本实现归档至 `plugins/legacy/nextstep/`，作为 `plugins/apps/nextstep/` 新应用的行为参考。[插件工程化规格](../../../docs/superpowers/specs/2026-11-23-plugin-workspace-design.md)定义源码隔离、严格 TypeScript 与 `dist/market/` 安装产物；命令、存储和渲染契约不因工程迁移改变。现有回归须能针对新产物执行，旧实现不构成新应用的运行依赖。
+
 ## 契约与状态所有者
 
 - 清单入口 `./index.mjs`，`onAvailable` 激活，注册 `nextstep`。声明 `sessions.read`、`turnFooter.generate` 与协议 `sessions: 1, rows: 4`。
@@ -46,7 +48,7 @@ sequenceDiagram
 
 ## 可重复验证
 
-`node --test plugins/nextstep/test/*.test.mjs` 使用真实 SQLite 和受控宿主端口，不使用网络。覆盖手动/自动竞争、在途合并的重投、重开最新失败、稳定 ID、局部候选验收、码点排序（含 emoji 与同长并列）与 5→4 截取、旧版 5 条记录原样读取、提示词 2–4 数量约束、非法输出、预算与权威历史、模块换代、崩溃恢复、owner fence、隔离和输入校验。
+`node --test plugins/legacy/nextstep/test/*.test.mjs` 使用真实 SQLite 和受控宿主端口，不使用网络。覆盖手动/自动竞争、在途合并的重投、重开最新失败、稳定 ID、局部候选验收、码点排序（含 emoji 与同长并列）与 5→4 截取、旧版 5 条记录原样读取、提示词 2–4 数量约束、非法输出、预算与权威历史、模块换代、崩溃恢复、owner fence、隔离和输入校验。
 
 使用本机现有 Electron 的 Node 模式执行相同测试和 SQLite 探针。市场只更新本地清单并保留无关条目；不注册、不安装、不启用插件。
 

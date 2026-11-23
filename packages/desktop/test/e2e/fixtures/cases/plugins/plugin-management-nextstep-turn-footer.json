@@ -2,7 +2,7 @@
   "version": 1,
   "caseName": "plugin-management-nextstep-turn-footer",
   "spec": "./test/e2e/plugins/extensions/plugin-management-nextstep-turn-footer.test.ts",
-  "fileFixtures": ["../../plugins/nextstep"],
+  "fileFixtures": ["../../plugins/apps/nextstep/dist/market/nextstep"],
   "providerFixtures": [
     "./test/e2e/fixtures/upstream/common.json",
     "./test/e2e/fixtures/upstream/plugin-management/plugin-management-nextstep-turn-footer.json"

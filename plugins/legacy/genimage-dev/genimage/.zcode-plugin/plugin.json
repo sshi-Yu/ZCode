@@ -1,0 +1,23 @@
+{
+  "name": "genimage",
+  "version": "0.1.0",
+  "description": "Open the GenImage infinite canvas with local, no-cost fixture data.",
+  "mcpServers": {
+    "genimage": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${ZCODE_PLUGIN_ROOT}/dist/server.mjs"]
+    }
+  },
+  "ui": {
+    "surfaces": [
+      {
+        "id": "canvas",
+        "title": { "en": "GenImage", "zh-CN": "GenImage 生图画布" },
+        "server": "genimage",
+        "resourceUri": "ui://genimage/canvas.html",
+        "availability": "session"
+      }
+    ]
+  }
+}

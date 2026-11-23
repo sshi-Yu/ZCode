@@ -25,7 +25,7 @@ import {
 } from "#e2e/helpers/v4-conversation";
 
 const PLUGIN_ID = "nextstep@inline";
-const PLUGIN_SOURCE = resolve(process.cwd(), "../../plugins/nextstep");
+const PLUGIN_SOURCE = resolve(process.cwd(), "../../plugins/apps/nextstep/dist/market/nextstep");
 const CLI_ENTRY = resolve(process.cwd(), "../../apps/zcode-cli/packages/cli/dist/zcode.cjs");
 const OTHER_SESSION = "sess_e2e_nextstep_other";
 const MARKER = "E2E_NEXTSTEP_TURNFOOTER";
@@ -63,6 +63,24 @@ async function setup(): Promise<void> {
       "ZCODE_E2E_HOME_DIR must be the dedicated desktop .e2e-home-nextstep directory",
     );
   }
+  const manifestText = await readFile(
+    join(PLUGIN_SOURCE, ".zcode-plugin", "plugin.json"),
+    "utf8",
+  ).catch((error: unknown) => {
+    throw new Error(
+      "Build NextStep with pnpm -C plugins --filter @zcode-plugins/nextstep build before replay",
+      { cause: error },
+    );
+  });
+  const manifest: unknown = JSON.parse(manifestText);
+  if (
+    !manifest ||
+    typeof manifest !== "object" ||
+    !("version" in manifest) ||
+    typeof manifest.version !== "string"
+  ) {
+    throw new Error("NextStep build did not produce a versioned plugin manifest");
+  }
   const target = join(home, "fixtures", "nextstep-turn-footer", "nextstep");
   await mkdir(target, { recursive: true });
   await cp(PLUGIN_SOURCE, target, { recursive: true });
@@ -76,7 +94,7 @@ async function setup(): Promise<void> {
       plugins: {
         [PLUGIN_ID]: {
           grants: ["sessions.read", "turnFooter.generate"],
-          consentedVersion: "0.1.1",
+          consentedVersion: manifest.version,
           consentRevision: EXTENSION_SESSION_CONSENT_REVISION,
           consentedAt: Date.now(),
         },
@@ -239,7 +257,10 @@ describe("PLM-EXT-NST NextStep 轮尾建议", () => {
     const manifest = JSON.parse(
       await readFile(join(PLUGIN_SOURCE, ".zcode-plugin", "plugin.json"), "utf8"),
     ) as { version: string };
-    expect(manifest.version).toBe("0.1.1");
+    const workspaceManifest = JSON.parse(
+      await readFile(resolve(process.cwd(), "../../plugins/apps/nextstep/manifest/plugin.json"), "utf8"),
+    ) as { version: string };
+    expect(manifest.version).toBe(workspaceManifest.version);
 
     await sendV4Prompt(`${MARKER}: Reply with exactly "nextstep-e2e-ok" and no other text.`);
     const pane = await waitForV4Pane(
