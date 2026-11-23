@@ -1,0 +1,1775 @@
+<!doctype html>
+<html lang="zh-CN" data-zcode-design data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>GenImage · 生图画布（开发模拟）</title>
+    <style>
+      /* 自包含开发夹具：语义与字阶沿用 DESIGN.md，浅深色回退取自 Zai 主题。 */
+      :root {
+        --ui-font-size: 14px;
+        --text-ui-xl: calc(var(--ui-font-size) + 4px);
+        --text-ui-lg: calc(var(--ui-font-size) + 2px);
+        --text-ui-base: var(--ui-font-size);
+        --text-ui-caption: calc(var(--ui-font-size) - 1px);
+        --text-ui-sm: calc(var(--ui-font-size) - 2px);
+        --text-ui-xs: calc(var(--ui-font-size) - 4px);
+        --color-background: #f8f8f8;
+        --color-card: #fff;
+        --color-popover: #fff;
+        --color-input: #fff;
+        --color-foreground: #171717;
+        --color-foreground-subtle: #595959;
+        --color-border: rgba(13, 13, 13, 0.1);
+        --color-border-hover: rgba(13, 13, 13, 0.2);
+        --color-surface: rgba(13, 13, 13, 0.03);
+        --color-hover: rgba(13, 13, 13, 0.05);
+        --color-selected: rgba(13, 13, 13, 0.05);
+        --color-primary: #000;
+        --color-primary-foreground: #fff;
+        --color-secondary: #e6e6e6;
+        --color-workflow-trace: rgba(13, 13, 13, 0.3);
+        --color-workflow-trace-strong: rgba(13, 13, 13, 0.55);
+        --color-destructive: #e03131;
+        --space-1: 4px;
+        --space-2: 8px;
+        --space-3: 12px;
+        --space-4: 16px;
+        --space-6: 24px;
+        --radius-xl: 12px;
+        --radius-lg: 8px;
+        --radius-md: 6px;
+        --shadow-overlay: 0 4px 16px rgb(0 0 0 / 8%), 0 1px 3px rgb(0 0 0 / 4%);
+        --motion: 140ms;
+        --canvas-dot: var(--color-border);
+        --font-sans:
+          Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      }
+      :root[data-theme="dark"] {
+        color-scheme: dark;
+        --color-background: #161616;
+        --color-card: #2b2b2b;
+        --color-popover: #2b2b2b;
+        --color-input: #2b2b2b;
+        --color-foreground: #f5f5f5;
+        --color-foreground-subtle: #b3b3b3;
+        --color-border: rgba(255, 255, 255, 0.1);
+        --color-border-hover: rgba(255, 255, 255, 0.25);
+        --color-surface: rgba(255, 255, 255, 0.05);
+        --color-hover: rgba(255, 255, 255, 0.05);
+        --color-selected: rgba(255, 255, 255, 0.1);
+        --color-primary: #fff;
+        --color-primary-foreground: #000;
+        --color-secondary: #363636;
+        --color-workflow-trace: rgba(255, 255, 255, 0.35);
+        --color-workflow-trace-strong: rgba(255, 255, 255, 0.6);
+        --color-destructive: #ff5c5c;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      body {
+        background: var(--color-background);
+        color: var(--color-foreground);
+        font: 400 var(--text-ui-base)/1.5 var(--font-sans);
+      }
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+        color: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      button,
+      select {
+        min-height: 32px;
+        border: 1px solid transparent;
+        border-radius: var(--radius-lg);
+        background: transparent;
+        padding: 4px 10px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--space-2);
+        white-space: nowrap;
+      }
+      button:hover {
+        background: var(--color-hover);
+      }
+      button:disabled {
+        cursor: not-allowed;
+        color: var(--color-foreground-subtle);
+        opacity: 0.55;
+      }
+      button.primary {
+        background: var(--color-primary);
+        color: var(--color-primary-foreground);
+      }
+      button.primary:hover {
+        opacity: 0.85;
+      }
+      button.outline {
+        border-color: var(--color-border);
+        background: var(--color-input);
+      }
+      button[aria-pressed="true"] {
+        background: var(--color-selected);
+      }
+      button.icon {
+        width: 32px;
+        height: 32px;
+        padding: 6px;
+        flex: none;
+      }
+      button:focus-visible,
+      select:focus-visible,
+      textarea:focus-visible,
+      input:focus-visible,
+      .node:focus-visible {
+        outline: 2px solid var(--color-foreground);
+        outline-offset: 3px;
+      }
+      svg.icon {
+        width: 16px;
+        height: 16px;
+        stroke: currentColor;
+        stroke-width: 1.6;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        flex: none;
+      }
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+      h1,
+      h2,
+      h3 {
+        font-size: var(--text-ui-base);
+        font-weight: 600;
+      }
+      .muted {
+        color: var(--color-foreground-subtle);
+      }
+      .small {
+        font-size: var(--text-ui-sm);
+      }
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      }
+      .badge {
+        padding: 2px 6px;
+        border-radius: var(--radius-md);
+        background: var(--color-surface);
+        color: var(--color-foreground-subtle);
+        font-size: var(--text-ui-sm);
+        font-weight: 500;
+        letter-spacing: 0.03em;
+        white-space: nowrap;
+      }
+      .floating {
+        position: fixed;
+        z-index: 10;
+        background: var(--color-popover);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-xl);
+        box-shadow: var(--shadow-overlay);
+      }
+      #viewport {
+        position: absolute;
+        inset: 0;
+        touch-action: none;
+        cursor: grab;
+        background-image: radial-gradient(circle, var(--canvas-dot) 1px, transparent 1px);
+        background-size: 24px 24px;
+      }
+      #viewport.dragging {
+        cursor: grabbing;
+      }
+      #world {
+        position: absolute;
+        width: 0;
+        height: 0;
+        transform-origin: 0 0;
+      }
+      #edges {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1px;
+        height: 1px;
+        overflow: visible;
+        pointer-events: none;
+      }
+      .edge {
+        fill: none;
+        stroke: var(--color-workflow-trace-strong);
+        stroke-width: 2;
+        vector-effect: non-scaling-stroke;
+      }
+      .edge.related {
+        stroke: var(--color-foreground-subtle);
+        stroke-width: 2.5;
+      }
+      #arrow path {
+        fill: var(--color-workflow-trace-strong);
+      }
+      .node {
+        position: absolute;
+        width: 288px;
+        background: var(--color-card);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-xl);
+        padding: 8px;
+        cursor: grab;
+        user-select: none;
+        box-shadow: 0 1px 3px rgb(0 0 0 / 3%);
+      }
+      .node.selected {
+        outline: 2px solid var(--color-foreground);
+        outline-offset: 4px;
+      }
+      .node-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin: 0 4px 8px;
+        font-size: var(--text-ui-sm);
+      }
+      .node-kind {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .node-art {
+        display: block;
+        width: 270px;
+        height: 204px;
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+        background: var(--color-surface);
+        pointer-events: none;
+      }
+      .node-art svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .node-foot {
+        padding: 12px 4px 4px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+      }
+      .node-title {
+        font-size: var(--text-ui-base);
+        font-weight: 500;
+      }
+      .node-meta {
+        margin-top: 4px;
+        color: var(--color-foreground-subtle);
+        font-size: var(--text-ui-sm);
+      }
+      .node-actions {
+        position: absolute;
+        top: calc(100% + 12px);
+        left: 50%;
+        transform: translateX(-50%) scale(var(--inverse-zoom, 1));
+        transform-origin: top center;
+        padding: 4px;
+        display: flex;
+        gap: 4px;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        background: var(--color-popover);
+        box-shadow: var(--shadow-overlay);
+        white-space: nowrap;
+      }
+      .node-actions button {
+        min-height: 28px;
+        font-size: var(--text-ui-sm);
+        padding: 4px 8px;
+        border-radius: var(--radius-md);
+      }
+      .node:not(.selected) .node-actions {
+        display: none;
+      }
+      .topbar {
+        top: 16px;
+        left: 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 8px;
+      }
+      .wordmark {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 4px;
+      }
+      .wordmark svg {
+        width: 24px;
+        height: 24px;
+      }
+      .wordmark span {
+        font-weight: 600;
+        letter-spacing: -0.03em;
+      }
+      .divider {
+        width: 1px;
+        height: 20px;
+        background: var(--color-border);
+      }
+      .top-actions {
+        top: 16px;
+        right: 16px;
+        display: flex;
+        gap: 4px;
+        padding: 8px;
+      }
+      .top-actions button {
+        font-size: var(--text-ui-sm);
+      }
+      .dev-note {
+        position: fixed;
+        top: 88px;
+        left: 24px;
+        z-index: 2;
+        pointer-events: none;
+      }
+      .dev-note p + p {
+        margin-top: 4px;
+      }
+      .dev-note .eyebrow {
+        font-size: var(--text-ui-sm);
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .zoom {
+        bottom: var(--space-6);
+        left: var(--space-6);
+        display: flex;
+        padding: 6px;
+        gap: 4px;
+        align-items: center;
+      }
+      .zoom output {
+        width: 48px;
+        text-align: center;
+        font-size: var(--text-ui-sm);
+        font-variant-numeric: tabular-nums;
+      }
+      .zoom button {
+        font-size: var(--text-ui-sm);
+      }
+      .canvas-help {
+        position: fixed;
+        bottom: 28px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: var(--text-ui-sm);
+        color: var(--color-foreground-subtle);
+        pointer-events: none;
+        white-space: nowrap;
+      }
+      .session-state {
+        bottom: 16px;
+        right: 16px;
+        padding: 8px 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: var(--text-ui-sm);
+      }
+      .status-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--color-foreground-subtle);
+      }
+      .panel {
+        right: 16px;
+        top: 80px;
+        width: 320px;
+        max-width: calc(100vw - 32px);
+        max-height: calc(100dvh - 160px);
+        overflow: auto;
+        z-index: 20;
+        animation: panel-in var(--motion) ease-out;
+      }
+      .panel[hidden] {
+        display: none;
+      }
+      .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 12px 12px 12px 16px;
+        border-bottom: 1px solid var(--color-border);
+      }
+      .panel-body {
+        padding: 16px;
+      }
+      .panel-body > * + * {
+        margin-top: 16px;
+      }
+      .panel-caption {
+        font-size: var(--text-ui-sm);
+        color: var(--color-foreground-subtle);
+      }
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        font-size: var(--text-ui-sm);
+      }
+      .field > label,
+      .field > span:first-child {
+        font-weight: 500;
+      }
+      textarea,
+      select,
+      input {
+        background: var(--color-input);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        padding: 8px 12px;
+        width: 100%;
+        min-width: 0;
+      }
+      textarea {
+        resize: vertical;
+        min-height: 112px;
+        max-height: 240px;
+        line-height: 1.65;
+        font-size: var(--text-ui-base);
+      }
+      textarea:focus,
+      select:focus {
+        border-color: var(--color-border-hover);
+      }
+      .form-grid {
+        display: grid;
+        grid-template-columns: 1.4fr 1fr;
+        gap: 12px;
+      }
+      .notice {
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        padding: 12px;
+        font-size: var(--text-ui-sm);
+        color: var(--color-foreground-subtle);
+      }
+      .full {
+        width: 100%;
+      }
+      .source-card {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: var(--color-surface);
+        border-radius: var(--radius-lg);
+        padding: 8px;
+      }
+      .source-thumb {
+        width: 64px;
+        height: 48px;
+        border-radius: var(--radius-md);
+        overflow: hidden;
+        flex: none;
+      }
+      .source-thumb svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .source-card strong {
+        font-size: var(--text-ui-sm);
+        font-weight: 500;
+      }
+      .source-card p {
+        font-size: var(--text-ui-sm);
+      }
+      .error {
+        color: var(--color-destructive);
+        font-size: var(--text-ui-sm);
+      }
+      .detail-art {
+        display: block;
+        width: 100%;
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+      }
+      .detail-art svg {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+      dl {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 8px 16px;
+        font-size: var(--text-ui-sm);
+        margin: 0;
+      }
+      dt {
+        color: var(--color-foreground-subtle);
+      }
+      dd {
+        margin: 0;
+        text-align: right;
+      }
+      .relations {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+        margin-top: 8px;
+      }
+      .relations button {
+        min-height: 28px;
+        border: 1px solid var(--color-border);
+        font-size: var(--text-ui-sm);
+      }
+      .history-list {
+        list-style: none;
+        margin: 0;
+        padding: 8px;
+      }
+      .history-list li + li {
+        border-top: 1px solid var(--color-border);
+      }
+      .history-row {
+        width: 100%;
+        justify-content: flex-start;
+        gap: 12px;
+        padding: 12px 8px;
+        text-align: left;
+        white-space: normal;
+      }
+      .history-row svg {
+        width: 52px;
+        height: 40px;
+        flex: none;
+        border-radius: var(--radius-md);
+      }
+      .history-copy {
+        flex: 1;
+        min-width: 0;
+      }
+      .history-copy strong {
+        display: block;
+        font-size: var(--text-ui-sm);
+        font-weight: 500;
+      }
+      .history-copy span {
+        font-size: var(--text-ui-sm);
+        color: var(--color-foreground-subtle);
+      }
+      .setting-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        font-size: var(--text-ui-sm);
+      }
+      .shortcut-list {
+        display: grid;
+        gap: 12px;
+        font-size: var(--text-ui-sm);
+      }
+      .shortcut-list div {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      kbd {
+        font:
+          var(--text-ui-sm) ui-monospace,
+          Consolas,
+          monospace;
+        padding: 2px 5px;
+        border: 1px solid var(--color-border);
+        border-radius: 4px;
+      }
+      #toast {
+        position: fixed;
+        z-index: 30;
+        left: 50%;
+        bottom: 80px;
+        transform: translateX(-50%);
+        width: max-content;
+        max-width: calc(100vw - 32px);
+        padding: 12px 16px;
+        background: var(--color-popover);
+        border: 1px solid var(--color-border);
+        border-radius: 16px;
+        box-shadow: var(--shadow-overlay);
+        font-size: var(--text-ui-sm);
+        pointer-events: none;
+      }
+      #toast:empty {
+        display: none;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+      @keyframes panel-in {
+        from {
+          opacity: 0;
+          transform: translateY(4px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      @media (max-width: 639px) {
+        .topbar {
+          top: 12px;
+          left: 12px;
+          gap: 8px;
+          padding: 6px;
+        }
+        .wordmark {
+          gap: 6px;
+        }
+        .wordmark span {
+          font-size: var(--text-ui-sm);
+        }
+        .wordmark svg {
+          width: 20px;
+          height: 20px;
+        }
+        .top-actions {
+          top: 12px;
+          right: 12px;
+          padding: 6px;
+        }
+        .top-actions .button-label {
+          display: none;
+        }
+        .top-actions button {
+          width: 32px;
+          padding: 6px;
+        }
+        .topbar .divider {
+          display: none;
+        }
+        .topbar button {
+          font-size: var(--text-ui-sm);
+          padding: 4px 8px;
+        }
+        .dev-note {
+          top: 80px;
+          left: 20px;
+        }
+        .dev-note .description {
+          max-width: 240px;
+        }
+        .panel {
+          top: auto;
+          bottom: 72px;
+          right: 12px;
+          left: 12px;
+          width: auto;
+          max-width: none;
+          max-height: calc(100dvh - 152px);
+        }
+        /* 窄屏以节点右缘为锚点，避免反向缩放后的操作栏向右超出聚焦画布的留白。 */
+        .node-actions {
+          left: auto;
+          right: 0;
+          transform: scale(var(--inverse-zoom, 1));
+          transform-origin: top right;
+        }
+        .zoom {
+          bottom: 12px;
+          left: 12px;
+          padding: 4px;
+          gap: 0;
+        }
+        .session-state {
+          right: 12px;
+          bottom: 12px;
+          min-height: 42px;
+          padding: 8px;
+        }
+        .session-state .host-label {
+          display: none;
+        }
+        .canvas-help {
+          display: none;
+        }
+        textarea,
+        select {
+          font-size: 16px;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <defs>
+        <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
+        <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14" /></symbol>
+        <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6" /></symbol>
+        <symbol id="i-history" viewBox="0 0 24 24">
+          <path d="M3 11a9 9 0 1 1 2.7 7M3 4v7h7M12 7v5l3 2" />
+        </symbol>
+        <symbol id="i-settings" viewBox="0 0 24 24">
+          <path d="M4 7h16M4 17h16M8 4v6M16 14v6" />
+        </symbol>
+        <symbol id="i-fit" viewBox="0 0 24 24">
+          <path d="M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5" />
+          <rect x="7" y="7" width="10" height="10" rx="1" />
+        </symbol>
+        <symbol id="i-branch" viewBox="0 0 24 24">
+          <circle cx="6" cy="5" r="2" />
+          <circle cx="18" cy="6" r="2" />
+          <circle cx="6" cy="19" r="2" />
+          <path d="M6 7v10M8 14c6 0 10-2 10-6" />
+        </symbol>
+        <symbol id="i-info" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 11v6M12 7v.01" />
+        </symbol>
+        <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h16m-5-5 5 5-5 5" /></symbol>
+      </defs>
+    </svg>
+
+    <main
+      id="viewport"
+      aria-label="无限画布，拖动空白平移，滚轮缩放。Tab 选择节点，Enter 查看详情。"
+      tabindex="-1"
+    >
+      <div id="world">
+        <svg id="edges" aria-hidden="true">
+          <defs>
+            <marker
+              id="arrow"
+              viewBox="0 0 8 8"
+              refX="7"
+              refY="4"
+              markerWidth="7"
+              markerHeight="7"
+              orient="auto"
+            >
+              <path d="M0 0 8 4 0 8Z" />
+            </marker>
+          </defs>
+          <g id="edge-paths"></g>
+        </svg>
+        <div id="nodes"></div>
+      </div>
+    </main>
+
+    <header class="floating topbar" aria-label="画布工具">
+      <div class="wordmark">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <rect x="2" y="2" width="20" height="20" rx="6" fill="currentColor" />
+          <path
+            d="m6 16 4-8 4 8M8 12h4m2 4 4-8"
+            stroke="var(--color-popover)"
+            stroke-width="1.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          /></svg
+        ><span>GenImage</span>
+      </div>
+      <span class="divider" aria-hidden="true"></span>
+      <button id="new-button" class="primary" type="button">
+        <svg class="icon" aria-hidden="true"><use href="#i-plus" /></svg>新生成
+      </button>
+    </header>
+    <nav class="floating top-actions" aria-label="画布面板">
+      <button
+        type="button"
+        id="history-button"
+        title="历史"
+        aria-label="打开模拟历史"
+        aria-expanded="false"
+        aria-controls="history-panel"
+      >
+        <svg class="icon" aria-hidden="true"><use href="#i-history" /></svg
+        ><span class="button-label">历史</span>
+      </button>
+      <button
+        type="button"
+        id="settings-button"
+        title="设置"
+        aria-label="打开设置"
+        aria-expanded="false"
+        aria-controls="settings-panel"
+      >
+        <svg class="icon" aria-hidden="true"><use href="#i-settings" /></svg
+        ><span class="button-label">设置</span>
+      </button>
+    </nav>
+    <div class="dev-note">
+      <p class="eyebrow muted">WORKSPACE / UNTITLED</p>
+      <p>一个想法，不止一种可能。</p>
+      <p class="small muted description">开发模拟 · 本页不调用生图服务，刷新即重置</p>
+    </div>
+
+    <nav class="floating zoom" aria-label="画布缩放">
+      <button type="button" class="icon" id="zoom-out" aria-label="缩小画布" title="缩小（-）">
+        <svg class="icon" aria-hidden="true"><use href="#i-minus" /></svg>
+      </button>
+      <output id="zoom-level" aria-label="缩放比例">100%</output>
+      <button type="button" class="icon" id="zoom-in" aria-label="放大画布" title="放大（+）">
+        <svg class="icon" aria-hidden="true"><use href="#i-plus" /></svg>
+      </button>
+      <span class="divider" aria-hidden="true"></span>
+      <button type="button" id="fit-button" title="聚焦全部（0）">
+        <svg class="icon" aria-hidden="true"><use href="#i-fit" /></svg>聚焦全部
+      </button>
+    </nav>
+    <p class="canvas-help">拖动空白平移 · 滚轮缩放 · <span class="mono">?</span> 快捷键</p>
+    <div class="floating session-state">
+      <span class="status-dot" aria-hidden="true"></span
+      ><span id="host-state" class="host-label">独立开发预览</span><span class="badge">模拟</span
+      ><button
+        type="button"
+        class="icon"
+        id="help-button"
+        title="操作帮助"
+        aria-label="打开操作帮助"
+      >
+        <svg class="icon" aria-hidden="true"><use href="#i-info" /></svg>
+      </button>
+    </div>
+
+    <section
+      id="create-panel"
+      class="floating panel"
+      role="dialog"
+      aria-labelledby="create-title"
+      hidden
+    >
+      <div class="panel-head">
+        <h2 id="create-title">新生成 <span class="badge">模拟</span></h2>
+        <button class="icon close-panel" type="button" aria-label="关闭生成面板">
+          <svg class="icon" aria-hidden="true"><use href="#i-close" /></svg>
+        </button>
+      </div>
+      <form id="create-form" class="panel-body">
+        <div id="source-preview" hidden></div>
+        <div class="field">
+          <label for="prompt" id="prompt-label">描述你想要的画面</label
+          ><textarea
+            id="prompt"
+            maxlength="2000"
+            placeholder="例如：山间的极简建筑，晨光穿过拱门，柔和的胶片质感……"
+            aria-describedby="prompt-help prompt-error"
+          ></textarea>
+          <p id="prompt-help" class="panel-caption">每次只创建一张模拟图；原图始终保留。</p>
+          <p id="prompt-error" class="error" role="alert" hidden></p>
+        </div>
+        <div class="form-grid">
+          <div class="field">
+            <label for="model">生图模型</label
+            ><select id="model">
+              <option value="fixture">本地 SVG 夹具</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="ratio">画面比例</label
+            ><select id="ratio">
+              <option value="4:3">4 : 3</option>
+              <option value="1:1">1 : 1</option>
+              <option value="3:4">3 : 4</option>
+            </select>
+          </div>
+        </div>
+        <div class="notice" id="generation-notice">
+          仅在当前页面添加 SVG 模拟节点。不发送提示词或图片，不产生真实生成请求，也不保存数据。
+        </div>
+        <button type="submit" class="primary full" id="generate-button">
+          <svg class="icon" aria-hidden="true"><use href="#i-plus" /></svg><span>模拟生成一张</span>
+        </button>
+        <p class="small muted" id="fixture-capacity">开发夹具最多 12 个节点。</p>
+      </form>
+    </section>
+
+    <section
+      id="inspector-panel"
+      class="floating panel"
+      role="dialog"
+      aria-labelledby="inspector-title"
+      hidden
+    >
+      <div class="panel-head">
+        <h2 id="inspector-title">成图详情</h2>
+        <button class="icon close-panel" type="button" aria-label="关闭详情">
+          <svg class="icon" aria-hidden="true"><use href="#i-close" /></svg>
+        </button>
+      </div>
+      <div id="inspector-content" class="panel-body"></div>
+    </section>
+    <section
+      id="history-panel"
+      class="floating panel"
+      role="dialog"
+      aria-labelledby="history-title"
+      hidden
+    >
+      <div class="panel-head">
+        <h2 id="history-title">历史 <span class="badge" id="history-count">3</span></h2>
+        <button class="icon close-panel" type="button" aria-label="关闭历史">
+          <svg class="icon" aria-hidden="true"><use href="#i-close" /></svg>
+        </button>
+      </div>
+      <p class="small muted" style="padding: 12px 16px 0">当前页面的模拟结果 · 选择以定位</p>
+      <ol id="history-list" class="history-list"></ol>
+    </section>
+    <section
+      id="settings-panel"
+      class="floating panel"
+      role="dialog"
+      aria-labelledby="settings-title"
+      hidden
+    >
+      <div class="panel-head">
+        <h2 id="settings-title">设置</h2>
+        <button class="icon close-panel" type="button" aria-label="关闭设置">
+          <svg class="icon" aria-hidden="true"><use href="#i-close" /></svg>
+        </button>
+      </div>
+      <div class="panel-body">
+        <div class="setting-row"><span>当前运行模式</span><span class="badge">本地模拟</span></div>
+        <div class="setting-row"><span>生图服务</span><span class="muted">未接入</span></div>
+        <div class="setting-row"><span>凭据</span><span class="muted">本页不读取密钥</span></div>
+        <div class="field">
+          <label for="theme-select">外观</label
+          ><select id="theme-select">
+            <option value="system">跟随宿主 / 系统</option>
+            <option value="light">浅色</option>
+            <option value="dark">深色</option>
+          </select>
+        </div>
+        <div class="notice">
+          这是无费用开发底座，不代表已接通
+          OpenAI。真实服务与密钥配置、导出及会话引用将在后续阶段接入。
+        </div>
+        <p class="small muted">相机、节点位置与本页草稿只存于内存；关闭或刷新页面后重置。</p>
+      </div>
+    </section>
+    <section
+      id="help-panel"
+      class="floating panel"
+      role="dialog"
+      aria-labelledby="help-title"
+      hidden
+    >
+      <div class="panel-head">
+        <h2 id="help-title">画布操作</h2>
+        <button class="icon close-panel" type="button" aria-label="关闭帮助">
+          <svg class="icon" aria-hidden="true"><use href="#i-close" /></svg>
+        </button>
+      </div>
+      <div class="panel-body">
+        <div class="shortcut-list">
+          <div><span>平移画布</span><span>拖动空白</span></div>
+          <div><span>移动节点</span><span>拖动节点</span></div>
+          <div>
+            <span>缩放</span><span>滚轮 / <kbd>+</kbd> <kbd>−</kbd></span>
+          </div>
+          <div><span>聚焦全部</span><kbd>0</kbd></div>
+          <div><span>新生成</span><kbd>N</kbd></div>
+          <div>
+            <span>选择 / 详情</span><span><kbd>Tab</kbd> / <kbd>Enter</kbd></span>
+          </div>
+          <div>
+            <span>定位父图 / 首张子图</span><span><kbd>←</kbd> / <kbd>→</kbd></span>
+          </div>
+          <div>
+            <span>微调选中节点</span><span><kbd>Shift</kbd> + 方向键</span>
+          </div>
+          <div><span>关闭面板</span><kbd>Esc</kbd></div>
+        </div>
+        <p class="small muted">
+          触屏可单指平移和拖动节点。缩放也可使用左下角按钮。所有连线都由来源关系实时绘制。
+        </p>
+      </div>
+    </section>
+    <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+    <p id="canvas-announcement" class="sr-only" aria-live="polite"></p>
+    <script>
+      (function () {
+        "use strict";
+        const $ = (id) => document.getElementById(id);
+        const state = {
+          nodes: [
+            {
+              id: "A",
+              title: "山间来信",
+              prompt: "山间的极简建筑，晨光穿过拱门，柔和的胶片质感。",
+              source: null,
+              x: 0,
+              y: 180,
+              art: 0,
+              ratio: "4:3",
+              time: "初始夹具",
+            },
+            {
+              id: "B",
+              title: "让月光住进来",
+              prompt: "保留建筑结构，将晨光改为安静的蓝色月夜。",
+              source: "A",
+              x: 440,
+              y: 0,
+              art: 1,
+              ratio: "4:3",
+              time: "初始夹具",
+            },
+            {
+              id: "C",
+              title: "另一种清晨",
+              prompt: "将群山变为薄雾森林，柔化光影，增加一抹绿色。",
+              source: "A",
+              x: 440,
+              y: 420,
+              art: 2,
+              ratio: "4:3",
+              time: "初始夹具",
+            },
+          ],
+          camera: { x: 0, y: 0, scale: 1 },
+          selected: "B",
+          panel: null,
+          source: null,
+          trigger: null,
+          toastTimer: null,
+          hostContext: {},
+          theme: "system",
+          sequence: 3,
+        };
+        const icon = (name) =>
+          '<svg class="icon" aria-hidden="true"><use href="#i-' + name + '"/></svg>';
+        function esc(value) {
+          return String(value).replace(
+            /[&<>"']/g,
+            (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+          );
+        }
+        // 插图是内联离线 SVG，不是供应商生成结果；每张保留独立来源元数据。
+        function illustration(kind, id, ratio) {
+          const palettes = [
+            [
+              "#eadac5",
+              "#e6c09c",
+              "#ad7d6b",
+              "#7b706b",
+              "#d8b190",
+              "#f6ead4",
+              "#805846",
+              "#bd7954",
+              "#53685f",
+            ],
+            [
+              "#1c304a",
+              "#355674",
+              "#243e51",
+              "#14293c",
+              "#687c89",
+              "#c8d6d5",
+              "#253d51",
+              "#879fa8",
+              "#1b4045",
+            ],
+            [
+              "#dfe4d4",
+              "#c8d7c1",
+              "#7d9b89",
+              "#5b786f",
+              "#bbc7aa",
+              "#f3eddb",
+              "#758779",
+              "#c7b991",
+              "#446a58",
+            ],
+          ];
+          const p = palettes[kind % 3];
+          const vb =
+            ratio === "1:1" ? "80 0 480 480" : ratio === "3:4" ? "140 0 360 480" : "0 0 640 480";
+          return (
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' +
+            vb +
+            '" role="img" aria-label="' +
+            ["晨光山间建筑插图", "月夜山间建筑插图", "薄雾森林建筑插图"][kind % 3] +
+            '">' +
+            '<defs><linearGradient id="sky-' +
+            id +
+            '" x2="0" y2="1"><stop stop-color="' +
+            p[0] +
+            '"/><stop offset="1" stop-color="' +
+            p[1] +
+            '"/></linearGradient><linearGradient id="wall-' +
+            id +
+            '" x2="1" y2="0"><stop stop-color="' +
+            p[4] +
+            '"/><stop offset="1" stop-color="' +
+            p[5] +
+            '"/></linearGradient></defs>' +
+            '<path fill="url(#sky-' +
+            id +
+            ')" d="M0 0h640v480H0z"/><circle cx="466" cy="110" r="42" fill="' +
+            p[5] +
+            '"/>' +
+            '<path d="M0 265 121 95 274 283 387 164 640 310v170H0Z" fill="' +
+            p[2] +
+            '"/><path d="M0 320 155 211 290 340 479 176 640 292v188H0Z" fill="' +
+            p[3] +
+            '"/>' +
+            '<path d="M0 379 209 306 640 361v119H0Z" fill="' +
+            p[4] +
+            '"/><path d="m145 370 292-40 203 82v68H0v-55Z" fill="' +
+            p[7] +
+            '"/>' +
+            '<path d="M199 179h244v211H199Z" fill="url(#wall-' +
+            id +
+            ')"/><path d="m443 179 53 30v181h-53Z" fill="' +
+            p[4] +
+            '"/><path d="m199 179 52-27h195l50 57-53-30Z" fill="' +
+            p[5] +
+            '"/>' +
+            '<path d="M266 390V280a54 54 0 0 1 108 0v110Z" fill="' +
+            p[6] +
+            '"/><path d="M280 390V282a40 40 0 0 1 80 0v108Z" fill="' +
+            p[1] +
+            '"/><path d="m280 348 80-25v67h-80Z" fill="' +
+            p[2] +
+            '"/>' +
+            '<path d="M199 390h297v13H186Zm-13 13h323v13H171Zm-15 13h352v13H154Z" fill="' +
+            p[5] +
+            '"/><path d="M345 232v158h15V266c0-14-6-27-15-34Z" fill="' +
+            p[4] +
+            '"/>' +
+            '<path d="M94 383v-83m-1 47c-47-7-56-55-40-83 36 10 54 43 40 83m3-14c-3-49 21-75 49-76 9 37-9 65-49 76" fill="' +
+            p[8] +
+            '" stroke="' +
+            p[8] +
+            '" stroke-width="4"/>' +
+            '<ellipse cx="95" cy="388" rx="36" ry="8" fill="' +
+            p[6] +
+            '"/><path d="m42 480 181-65h75l-103 65" fill="' +
+            p[4] +
+            '"/><path d="m414 430 145 50h81v-15l-127-35" fill="' +
+            p[6] +
+            '" opacity=".28"/>' +
+            (kind % 3 === 1
+              ? '<g fill="' +
+                p[5] +
+                '"><circle cx="94" cy="77" r="2"/><circle cx="324" cy="48" r="2"/><circle cx="549" cy="195" r="1.5"/><circle cx="395" cy="108" r="1.5"/></g>'
+              : "") +
+            "</svg>"
+          );
+        }
+        function nodeById(id) {
+          return state.nodes.find((n) => n.id === id);
+        }
+        function announce(text) {
+          $("canvas-announcement").textContent = text;
+        }
+        function toast(text) {
+          clearTimeout(state.toastTimer);
+          $("toast").textContent = text;
+          state.toastTimer = setTimeout(() => {
+            $("toast").textContent = "";
+          }, 4500);
+        }
+        function renderNodes() {
+          $("nodes").innerHTML = state.nodes
+            .map(
+              (n) =>
+                '<article class="node' +
+                (n.id === state.selected ? " selected" : "") +
+                '" data-id="' +
+                n.id +
+                '" tabindex="0" role="group" aria-label="' +
+                esc(
+                  n.id +
+                    " · " +
+                    n.title +
+                    "，模拟结果，" +
+                    (n.source ? "来源 " + n.source : "原图") +
+                    "。Enter 查看详情。",
+                ) +
+                '" style="left:' +
+                n.x +
+                "px;top:" +
+                n.y +
+                'px">' +
+                '<div class="node-head"><span class="node-kind"><span class="mono">' +
+                n.id +
+                '</span><span class="muted">' +
+                (n.source ? "派生自 " + n.source : "原图") +
+                '</span></span><span class="badge">模拟</span></div><div class="node-art">' +
+                illustration(n.art, "node-" + n.id, n.ratio) +
+                '</div><div class="node-foot"><div><h3 class="node-title">' +
+                esc(n.title) +
+                '</h3><p class="node-meta">SVG 夹具 · ' +
+                esc(n.ratio) +
+                ' · 不可导出</p></div><svg class="icon muted" aria-hidden="true"><use href="#i-branch"/></svg></div><div class="node-actions"><button type="button" data-action="inspect">' +
+                icon("info") +
+                '详情</button><button type="button" class="primary" data-action="derive">' +
+                icon("branch") +
+                "基于此图修改</button></div></article>",
+            )
+            .join("");
+          renderEdges();
+        }
+        function renderEdges() {
+          $("edge-paths").innerHTML = state.nodes
+            .filter((n) => n.source)
+            .map((n) => {
+              const parent = nodeById(n.source);
+              const rightward = n.x >= parent.x;
+              const x1 = parent.x + (rightward ? 288 : 0),
+                y1 = parent.y + 162,
+                x2 = n.x + (rightward ? 0 : 288),
+                y2 = n.y + 162;
+              const bend = Math.max(60, Math.abs(x2 - x1) * 0.5) * (rightward ? 1 : -1);
+              const related = n.id === state.selected || parent.id === state.selected;
+              return (
+                '<path class="edge' +
+                (related ? " related" : "") +
+                '" d="M' +
+                x1 +
+                " " +
+                y1 +
+                " C" +
+                (x1 + bend) +
+                " " +
+                y1 +
+                " " +
+                (x2 - bend) +
+                " " +
+                y2 +
+                " " +
+                x2 +
+                " " +
+                y2 +
+                '" marker-end="url(#arrow)"/>'
+              );
+            })
+            .join("");
+        }
+        function applyCamera() {
+          const c = state.camera;
+          $("world").style.setProperty("--inverse-zoom", String(1 / c.scale));
+          $("world").style.transform =
+            "translate(" + c.x + "px," + c.y + "px) scale(" + c.scale + ")";
+          $("viewport").style.backgroundSize = 24 * c.scale + "px " + 24 * c.scale + "px";
+          $("viewport").style.backgroundPosition = c.x + "px " + c.y + "px";
+          $("zoom-level").value = Math.round(c.scale * 100) + "%";
+        }
+        function zoomAt(factor, x, y) {
+          const c = state.camera,
+            next = Math.min(2, Math.max(0.02, c.scale * factor)),
+            old = c.scale;
+          c.x = x - ((x - c.x) * next) / old;
+          c.y = y - ((y - c.y) * next) / old;
+          c.scale = next;
+          applyCamera();
+        }
+        function fit() {
+          const minX = Math.min(...state.nodes.map((n) => n.x)),
+            minY = Math.min(...state.nodes.map((n) => n.y));
+          const maxX = Math.max(...state.nodes.map((n) => n.x + 288)),
+            maxY = Math.max(...state.nodes.map((n) => n.y + 370));
+          const width = innerWidth - 64,
+            height = Math.max(160, innerHeight - 240);
+          const scale = Math.max(0.02, Math.min(1, width / (maxX - minX), height / (maxY - minY)));
+          state.camera = {
+            scale,
+            x: innerWidth / 2 - ((minX + maxX) / 2) * scale,
+            y: 170 + (height - (maxY - minY) * scale) / 2 - minY * scale,
+          };
+          applyCamera();
+        }
+        function focusNode(id, keyboard) {
+          const n = nodeById(id);
+          if (!n) return;
+          select(id);
+          const c = state.camera,
+            narrow = innerWidth < 640;
+          c.x =
+            (state.panel && !narrow ? (innerWidth - 352) / 2 : innerWidth / 2) -
+            (n.x + 144) * c.scale;
+          c.y = (narrow && state.panel ? 180 : innerHeight / 2) - (n.y + 162) * c.scale;
+          applyCamera();
+          if (keyboard)
+            document.querySelector('.node[data-id="' + id + '"]').focus({ preventScroll: true });
+        }
+        function select(id) {
+          state.selected = id;
+          document
+            .querySelectorAll(".node")
+            .forEach((el) => el.classList.toggle("selected", el.dataset.id === id));
+          renderEdges();
+          if (state.panel === "inspector-panel") renderInspector();
+        }
+        function setPanel(id, trigger) {
+          const same = state.panel === id;
+          closePanel(false);
+          if (same) return;
+          state.panel = id;
+          state.trigger = trigger || document.activeElement;
+          $(id).hidden = false;
+          $("history-button").setAttribute("aria-expanded", String(id === "history-panel"));
+          $("settings-button").setAttribute("aria-expanded", String(id === "settings-panel"));
+          const focusTarget =
+            id === "create-panel" ? $("prompt") : $(id).querySelector(".close-panel");
+          focusTarget.focus({ preventScroll: true });
+        }
+        function closePanel(restore) {
+          const previous = state.trigger;
+          if (state.panel) $(state.panel).hidden = true;
+          state.panel = null;
+          $("history-button").setAttribute("aria-expanded", "false");
+          $("settings-button").setAttribute("aria-expanded", "false");
+          if (restore && previous && previous.isConnected) previous.focus({ preventScroll: true });
+        }
+        function openCreate(source, trigger) {
+          state.source = source;
+          $("create-title").innerHTML =
+            (source ? "基于此图修改" : "新生成") + ' <span class="badge">模拟</span>';
+          $("prompt-label").textContent = source ? "希望如何修改这张图？" : "描述你想要的画面";
+          $("source-preview").hidden = !source;
+          if (source) {
+            const n = nodeById(source);
+            $("source-preview").innerHTML =
+              '<div class="source-card"><div class="source-thumb">' +
+              illustration(n.art, "source-" + n.id, n.ratio) +
+              "</div><div><strong>来源 " +
+              n.id +
+              " · " +
+              esc(n.title) +
+              '</strong><p class="muted">只基于此图创建子节点；原图不变</p></div></div>';
+          }
+          $("generate-button").innerHTML =
+            icon(source ? "branch" : "plus") +
+            "<span>" +
+            (source ? "模拟派生一张" : "模拟生成一张") +
+            "</span>";
+          $("prompt-error").hidden = true;
+          setPanel("create-panel", trigger);
+          updateSubmit();
+        }
+        function renderInspector() {
+          const n = nodeById(state.selected);
+          if (!n) {
+            $("inspector-content").innerHTML =
+              '<p class="muted small">尚未选择成图。请在画布上选择一个模拟节点。</p>';
+            return;
+          }
+          const children = state.nodes.filter((child) => child.source === n.id);
+          $("inspector-content").innerHTML =
+            '<div class="detail-art">' +
+            illustration(n.art, "detail-" + n.id, n.ratio) +
+            "</div><div><h3>" +
+            esc(n.id + " · " + n.title) +
+            '</h3><p class="small muted" style="margin-top:8px">' +
+            esc(n.prompt) +
+            "</p></div><dl><dt>类型</dt><dd>SVG 模拟结果</dd><dt>画面比例</dt><dd>" +
+            esc(n.ratio) +
+            "</dd><dt>模型</dt><dd>本地夹具</dd><dt>创建时间</dt><dd>" +
+            esc(n.time) +
+            '</dd></dl><div><p class="small muted">来源与直接子图</p><div class="relations">' +
+            (n.source
+              ? '<button data-locate="' + n.source + '">' + esc(n.source) + " · 来源</button>"
+              : '<span class="small">原图，无上游</span>') +
+            children
+              .map((c) => '<button data-locate="' + c.id + '">' + esc(c.id) + " · 子图</button>")
+              .join("") +
+            '</div></div><button class="primary full" type="button" id="inspector-derive">' +
+            icon("branch") +
+            '基于此图修改</button><div class="form-grid"><button class="outline" type="button" disabled>导出 PNG</button><button class="outline" type="button" disabled>引用到会话</button></div><p class="small muted">模拟图不是可导出的原始产物；文件与会话交接未接入。</p>';
+        }
+        function renderHistory() {
+          $("history-count").textContent = state.nodes.length;
+          $("history-list").innerHTML = [...state.nodes]
+            .reverse()
+            .map(
+              (n) =>
+                '<li><button type="button" class="history-row" data-locate="' +
+                n.id +
+                '">' +
+                illustration(n.art, "history-" + n.id, n.ratio) +
+                '<span class="history-copy"><strong>' +
+                esc(n.id + " · " + n.title) +
+                "</strong><span>" +
+                (n.source ? "派生自 " + n.source : "原图") +
+                " · " +
+                esc(n.time) +
+                '</span></span><span class="badge">模拟</span></button></li>',
+            )
+            .join("");
+        }
+        function updateSubmit() {
+          $("generate-button").disabled = !$("prompt").value.trim() || state.nodes.length >= 12;
+          $("fixture-capacity").textContent =
+            state.nodes.length >= 12
+              ? "已达 12 个模拟节点上限；刷新页面可重置。"
+              : "开发夹具最多 12 个节点。";
+        }
+        $("new-button").addEventListener("click", (e) => openCreate(null, e.currentTarget));
+        $("history-button").addEventListener("click", (e) => {
+          renderHistory();
+          setPanel("history-panel", e.currentTarget);
+        });
+        $("settings-button").addEventListener("click", (e) =>
+          setPanel("settings-panel", e.currentTarget),
+        );
+        $("help-button").addEventListener("click", (e) => setPanel("help-panel", e.currentTarget));
+        document
+          .querySelectorAll(".close-panel")
+          .forEach((el) => el.addEventListener("click", () => closePanel(true)));
+        $("zoom-in").addEventListener("click", () => zoomAt(1.2, innerWidth / 2, innerHeight / 2));
+        $("zoom-out").addEventListener("click", () =>
+          zoomAt(1 / 1.2, innerWidth / 2, innerHeight / 2),
+        );
+        $("fit-button").addEventListener("click", () => {
+          fit();
+          announce("已聚焦全部 " + state.nodes.length + " 个模拟节点");
+        });
+        $("prompt").addEventListener("input", () => {
+          $("prompt-error").hidden = true;
+          updateSubmit();
+        });
+        $("create-form").addEventListener("submit", (e) => {
+          e.preventDefault();
+          const prompt = $("prompt").value.trim();
+          if (!prompt) {
+            $("prompt-error").textContent = "请先写下画面描述。";
+            $("prompt-error").hidden = false;
+            $("prompt").focus();
+            return;
+          }
+          if (state.nodes.length >= 12) {
+            updateSubmit();
+            return;
+          }
+          const source = nodeById(state.source),
+            id = String.fromCharCode(65 + state.sequence++);
+          let x = source ? source.x + 440 : Math.max(...state.nodes.map((n) => n.x)) + 440,
+            y = source ? source.y : 180;
+          // 节点位置只是视图态，来源仅由确认时选择的 source 决定；找空位不能修改谱系。
+          while (state.nodes.some((n) => Math.abs(n.x - x) < 320 && Math.abs(n.y - y) < 370))
+            y += 420;
+          const n = {
+            id,
+            title: source ? "新的修改方向" : "新的画面想法",
+            prompt,
+            source: source ? source.id : null,
+            x,
+            y,
+            art: source ? (source.art + 1) % 3 : state.sequence % 3,
+            ratio: $("ratio").value,
+            time: new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(
+              new Date(),
+            ),
+          };
+          state.nodes.push(n);
+          state.selected = n.id;
+          renderNodes();
+          closePanel(false);
+          focusNode(n.id, true);
+          toast(
+            "已添加模拟" +
+              (source
+                ? "子图 " + id + "，来源 " + source.id + " 保持不变。"
+                : "节点 " + id + "。") +
+              "未调用生图服务。",
+          );
+        });
+        $("nodes").addEventListener("click", (e) => {
+          const node = e.target.closest(".node");
+          if (!node) return;
+          select(node.dataset.id);
+          const action = e.target.closest("[data-action]");
+          if (action && action.dataset.action === "derive") openCreate(node.dataset.id, action);
+          if (action && action.dataset.action === "inspect") {
+            renderInspector();
+            setPanel("inspector-panel", action);
+          }
+        });
+        $("nodes").addEventListener("focusin", (e) => {
+          const n = e.target.closest(".node");
+          if (n) select(n.dataset.id);
+        });
+        $("nodes").addEventListener("keydown", (e) => {
+          if (e.target.matches("button")) return;
+          const node = e.target.closest(".node");
+          if (!node) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            select(node.dataset.id);
+            renderInspector();
+            setPanel("inspector-panel", node);
+          }
+        });
+        $("history-list").addEventListener("click", (e) => {
+          const button = e.target.closest("[data-locate]");
+          if (button) {
+            closePanel(false);
+            focusNode(button.dataset.locate, true);
+          }
+        });
+        $("inspector-content").addEventListener("click", (e) => {
+          const locate = e.target.closest("[data-locate]");
+          if (locate) {
+            focusNode(locate.dataset.locate, false);
+            return;
+          }
+          if (e.target.closest("#inspector-derive")) {
+            closePanel(false);
+            openCreate(
+              state.selected,
+              document.querySelector('.node[data-id="' + state.selected + '"]'),
+            );
+          }
+        });
+        let drag = null;
+        $("viewport").addEventListener("pointerdown", (e) => {
+          if (e.button !== 0 || e.target.closest("button")) return;
+          const el = e.target.closest(".node");
+          const n = el && nodeById(el.dataset.id);
+          drag = {
+            pointer: e.pointerId,
+            sx: e.clientX,
+            sy: e.clientY,
+            x: n ? n.x : state.camera.x,
+            y: n ? n.y : state.camera.y,
+            node: n,
+            moved: false,
+          };
+          if (n) {
+            select(n.id);
+            el.focus({ preventScroll: true });
+          }
+          $("viewport").setPointerCapture(e.pointerId);
+          $("viewport").classList.add("dragging");
+        });
+        $("viewport").addEventListener("pointermove", (e) => {
+          if (!drag || e.pointerId !== drag.pointer) return;
+          const dx = e.clientX - drag.sx,
+            dy = e.clientY - drag.sy;
+          if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
+          if (!drag.moved) return;
+          if (drag.node) {
+            drag.node.x = drag.x + dx / state.camera.scale;
+            drag.node.y = drag.y + dy / state.camera.scale;
+            const el = document.querySelector('.node[data-id="' + drag.node.id + '"]');
+            el.style.left = drag.node.x + "px";
+            el.style.top = drag.node.y + "px";
+            renderEdges();
+          } else {
+            state.camera.x = drag.x + dx;
+            state.camera.y = drag.y + dy;
+            applyCamera();
+          }
+        });
+        function endDrag(e) {
+          if (!drag || e.pointerId !== drag.pointer) return;
+          if (!drag.node && !drag.moved && e.type !== "pointercancel") select(null);
+          if ($("viewport").hasPointerCapture(e.pointerId))
+            $("viewport").releasePointerCapture(e.pointerId);
+          drag = null;
+          $("viewport").classList.remove("dragging");
+        }
+        $("viewport").addEventListener("pointerup", endDrag);
+        $("viewport").addEventListener("pointercancel", endDrag);
+        $("viewport").addEventListener(
+          "wheel",
+          (e) => {
+            e.preventDefault();
+            zoomAt(
+              Math.exp(-Math.max(-100, Math.min(100, e.deltaY)) * 0.003),
+              e.clientX,
+              e.clientY,
+            );
+          },
+          { passive: false },
+        );
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") {
+            if (state.panel) {
+              e.preventDefault();
+              closePanel(true);
+            }
+            return;
+          }
+          if (e.target.closest("input,textarea,select") || e.ctrlKey || e.metaKey || e.altKey)
+            return;
+          const n = nodeById(state.selected);
+          if (e.key === "+" || e.key === "=") {
+            e.preventDefault();
+            zoomAt(1.2, innerWidth / 2, innerHeight / 2);
+          } else if (e.key === "-") {
+            e.preventDefault();
+            zoomAt(1 / 1.2, innerWidth / 2, innerHeight / 2);
+          } else if (e.key === "0" || e.key === "Home") {
+            e.preventDefault();
+            fit();
+          } else if (e.key.toLowerCase() === "n") {
+            e.preventDefault();
+            openCreate(null, $("new-button"));
+          } else if (e.key === "?") {
+            e.preventDefault();
+            setPanel("help-panel", $("help-button"));
+          } else if (n && e.key.startsWith("Arrow")) {
+            e.preventDefault();
+            if (e.shiftKey) {
+              n.x += e.key === "ArrowRight" ? 16 : e.key === "ArrowLeft" ? -16 : 0;
+              n.y += e.key === "ArrowDown" ? 16 : e.key === "ArrowUp" ? -16 : 0;
+              const el = document.querySelector('.node[data-id="' + n.id + '"]');
+              el.style.left = n.x + "px";
+              el.style.top = n.y + "px";
+              renderEdges();
+            } else {
+              const target =
+                e.key === "ArrowLeft"
+                  ? nodeById(n.source)
+                  : e.key === "ArrowRight"
+                    ? state.nodes.find((child) => child.source === n.id)
+                    : state.nodes[
+                        (state.nodes.indexOf(n) +
+                          (e.key === "ArrowDown" ? 1 : state.nodes.length - 1)) %
+                          state.nodes.length
+                      ];
+              if (target) focusNode(target.id, true);
+            }
+          }
+        });
+        const media = matchMedia("(prefers-color-scheme: dark)");
+        function applyTheme() {
+          const theme =
+            state.theme === "system"
+              ? state.hostContext.theme || (media.matches ? "dark" : "light")
+              : state.theme;
+          document.documentElement.dataset.theme = theme;
+        }
+        $("theme-select").addEventListener("change", () => {
+          state.theme = $("theme-select").value;
+          applyTheme();
+        });
+        media.addEventListener("change", applyTheme);
+        window.addEventListener("resize", () => applyCamera());
+
+        /* 最小 MCP Apps 线协议。已对照仓库 ext-apps 2.0.0 generated/schema.json、
+         App SDK 及 Desktop relay.ts 核验；不调用工具、不读资源、不写宿主状态。
+         唯一对外请求：初始化、申请 fullscreen；无网络或业务请求。 */
+        let initialized = false;
+        const supportedVersions = ["2026-01-26", "2025-11-21"];
+        function send(message) {
+          window.parent.postMessage(Object.assign({ jsonrpc: "2.0" }, message), "*");
+        }
+        function contextChanged(context) {
+          if (!context || typeof context !== "object") return;
+          state.hostContext = Object.assign({}, state.hostContext, context);
+          applyTheme();
+        }
+        function receiveOpenBrief(params) {
+          // open_canvas 结果只带入可编辑草稿；保留已有输入，避免重放结果覆盖用户修改。
+          const brief = params && params.structuredContent && params.structuredContent.brief;
+          if ((params && params.isError) || typeof brief !== "string" || !brief.trim()) return;
+          if (Array.from(brief).length > 2000) {
+            toast("会话需求超过 2,000 字，未替换当前草稿。");
+            return;
+          }
+          if ($("prompt").value.trim()) {
+            toast("已保留当前草稿；会话需求未覆盖你的输入。");
+            return;
+          }
+          $("prompt").value = brief;
+          if (state.panel === "create-panel") closePanel(false);
+          openCreate(null, $("new-button"));
+          toast("已带入会话需求，可编辑后模拟生成。");
+        }
+        window.addEventListener("message", (e) => {
+          if (window.parent === window || e.source !== window.parent) return;
+          const m = e.data;
+          if (!m || m.jsonrpc !== "2.0" || typeof m !== "object") return;
+          if (m.id === "genimage-init" && !initialized) {
+            if (m.error || !m.result || !supportedVersions.includes(m.result.protocolVersion)) {
+              $("host-state").textContent = "宿主握手未完成";
+              return;
+            }
+            initialized = true;
+            contextChanged(m.result.hostContext);
+            send({ method: "ui/notifications/initialized" });
+            $("host-state").textContent = "已连接 ZCode 宿主";
+            if (
+              state.hostContext.displayMode !== "fullscreen" &&
+              (!state.hostContext.availableDisplayModes ||
+                state.hostContext.availableDisplayModes.includes("fullscreen"))
+            )
+              send({
+                id: "genimage-fullscreen",
+                method: "ui/request-display-mode",
+                params: { mode: "fullscreen" },
+              });
+          } else if (m.method === "ui/notifications/host-context-changed") contextChanged(m.params);
+          else if (initialized && m.method === "ui/notifications/tool-result")
+            receiveOpenBrief(m.params);
+          else if (m.method === "ui/resource-teardown" && m.id !== undefined) {
+            clearTimeout(state.toastTimer);
+            send({ id: m.id, result: {} });
+          } else if (m.id === "genimage-fullscreen" && m.error)
+            $("host-state").textContent = "已连接 · 全屏请求未获接受";
+          else if (m.method && m.id !== undefined)
+            send({ id: m.id, error: { code: -32601, message: "Method not found" } });
+        });
+        renderNodes();
+        applyTheme();
+        fit();
+        updateSubmit();
+        if (window.parent !== window)
+          send({
+            id: "genimage-init",
+            method: "ui/initialize",
+            params: {
+              appInfo: { name: "genimage-dev", version: "0.0.1", title: "GenImage 开发模拟" },
+              appCapabilities: { availableDisplayModes: ["fullscreen"] },
+              protocolVersion: "2026-01-26",
+            },
+          });
+      })();
+    </script>
+  </body>
+</html>

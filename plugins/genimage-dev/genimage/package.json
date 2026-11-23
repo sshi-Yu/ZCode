@@ -1,0 +1,25 @@
+{
+  "name": "genimage",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Offline GenImage MCP Apps development scaffold; no image provider or generation tools.",
+  "files": [
+    ".zcode-plugin/plugin.json",
+    "dist/server.mjs",
+    "ui/canvas.html"
+  ],
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "stage": "node scripts/build.mjs --stage",
+    "test": "node scripts/build.mjs && node test/mcp-smoke.mjs",
+    "test:mcp": "node test/mcp-smoke.mjs"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "esbuild": "0.25.12"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
