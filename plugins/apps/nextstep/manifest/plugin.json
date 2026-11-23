@@ -1,0 +1,19 @@
+{
+  "name": "nextstep",
+  "version": "0.1.2",
+  "description": "Generate and persist optional next-step suggestions after successful local conversation turns.",
+  "author": { "name": "NextStep" },
+  "extension": {
+    "engines": { "zcode": "^1.5.0" },
+    "main": "./dist/index.mjs",
+    "activationEvents": ["onAvailable"],
+    "protocols": { "sessions": 1, "rows": 4 },
+    "grants": ["sessions.read", "turnFooter.generate"],
+    "contributes": {
+      "commands": [{ "id": "nextstep", "title": "NextStep" }]
+    }
+  },
+  "slots": {
+    "conversation.turnFooter": [{ "id": "nextstep", "target": { "command": "nextstep" } }]
+  }
+}

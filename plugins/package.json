@@ -1,0 +1,26 @@
+{
+  "name": "@zcode-plugins/workspace",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.2",
+  "engines": { "node": ">=24.14 <25" },
+  "scripts": {
+    "dev": "pnpm --filter @zcode-plugins/genimage dev",
+    "build": "pnpm -r --if-present build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "oxlint --type-aware --deny-warnings -c .oxlintrc.json apps packages scripts",
+    "test:engineering": "node --test scripts/*.test.mjs",
+    "test": "pnpm test:engineering && pnpm -r --if-present test",
+    "check:boundaries": "node scripts/check-boundaries.mjs",
+    "verify": "pnpm check:boundaries && pnpm --filter @zcode-plugins/ui verify:generated && pnpm typecheck && pnpm lint && pnpm build && pnpm test"
+  },
+  "devDependencies": {
+    "@babel/parser": "catalog:",
+    "@types/node": "catalog:",
+    "oxlint": "catalog:",
+    "oxlint-tsgolint": "catalog:",
+    "shadcn": "catalog:",
+    "typescript": "catalog:",
+    "yaml": "catalog:"
+  }
+}

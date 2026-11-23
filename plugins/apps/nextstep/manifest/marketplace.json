@@ -1,0 +1,18 @@
+{
+  "name": "dev-zcode-1b53af4a",
+  "plugins": [
+    {
+      "name": "nextstep",
+      "source": "./nextstep",
+      "version": "0.1.2",
+      "description": "Generate and persist optional next-step suggestions after successful local conversation turns.",
+      "displayName": "NextStep",
+      "displayName_i18n": {
+        "zh-CN": "下一步建议"
+      },
+      "description_i18n": {
+        "zh-CN": "在本地主对话轮次成功后生成并持久保存可选的下一步建议。"
+      }
+    }
+  ]
+}

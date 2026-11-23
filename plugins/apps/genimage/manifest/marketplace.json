@@ -1,0 +1,15 @@
+{
+  "name": "genimage-local",
+  "plugins": [
+    {
+      "name": "genimage",
+      "source": "./genimage",
+      "version": "0.1.1",
+      "description": "Open the GenImage infinite canvas with local, no-cost fixture data.",
+      "displayName": "GenImage",
+      "displayName_i18n": { "zh-CN": "GenImage 生图画布" },
+      "description_i18n": { "zh-CN": "在无限画布中查看和派生模拟成图，无网络生图或费用。" },
+      "category": "productivity"
+    }
+  ]
+}

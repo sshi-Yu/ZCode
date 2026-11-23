@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.browser.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+    "noEmit": true
+  },
+  "include": ["src/browser/**/*.ts", "src/browser/**/*.tsx", "canvas.html"]
+}

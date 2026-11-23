@@ -1,0 +1,201 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@source "../../ui/src";
+@source "./";
+
+/* 宿主 html 的首帧 data-theme 只是输入，后续样式只以 UIS 投影根为准，避免祖先深色污染浅色 Provider。 */
+@custom-variant dark (&:where([data-zcode-plugins-theme][data-theme="dark"], [data-zcode-plugins-theme][data-theme="dark"] *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-background-alt: var(--background-alt);
+  --color-surface: var(--surface);
+  --color-card: var(--card);
+  --color-card-border: var(--color-border-tertiary, var(--border));
+  --color-popover: var(--popover);
+  --color-popover-border: var(--border);
+  --color-popover-foreground: var(--foreground);
+  --color-foreground: var(--foreground);
+  --color-foreground-subtle: var(--muted-foreground);
+  --color-foreground-subtlest: var(--subtlest-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--muted);
+  --color-accent-foreground: var(--foreground);
+  --color-hover: var(--muted);
+  --color-selected: var(--muted);
+  --color-border: var(--border);
+  --color-border-hover: var(--border-hover);
+  --color-input: var(--input-surface);
+  --color-input-focused: var(--input-surface);
+  --color-input-border: var(--border);
+  --color-input-border-hover: var(--border-hover);
+  --color-input-border-focused: var(--ring);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-brand: var(--primary);
+  --text-ui-xl: calc(var(--ui-font-size) + 4px);
+  --text-ui-lg: var(--font-text-lg-size, calc(var(--ui-font-size) + 2px));
+  --text-ui-base: var(--ui-font-size);
+  --text-ui-caption: calc(var(--ui-font-size) - 1px);
+  --text-ui-sm: var(--font-text-sm-size, calc(var(--ui-font-size) - 2px));
+  --text-ui-xs: var(--font-text-xs-size, calc(var(--ui-font-size) - 4px));
+  --text-mobile-input-safe: 16px;
+  --radius-sm: var(--border-radius-sm, 4px);
+  --radius-md: var(--border-radius-md, 6px);
+  --radius-lg: var(--border-radius-lg, 8px);
+  --radius-xl: var(--border-radius-xl, 12px);
+  --radius-2xl: 16px;
+}
+
+/* No font fetch or global html size mutation: tokens inherit from the host projection. */
+:where(.zcode-plugins-theme) {
+  --fallback-background: #f8f8f8;
+  --fallback-panel: #ffffff;
+  --fallback-surface: #ededed;
+  --fallback-foreground: #171717;
+  --fallback-subtle: #595959;
+  --fallback-subtlest: #737373;
+  --fallback-border: rgb(13 13 13 / 10%);
+  --fallback-border-hover: rgb(13 13 13 / 20%);
+  --fallback-hover: rgb(13 13 13 / 5%);
+  --fallback-primary: #000000;
+  --fallback-inverse: #ffffff;
+  --fallback-secondary: #e6e6e6;
+  --fallback-danger: #e03131;
+  --fallback-success: #16a34a;
+  --fallback-warning: #ca8a04;
+  --background: var(--color-background-primary, var(--fallback-background));
+  --background-alt: var(--color-background-secondary, var(--fallback-panel));
+  --surface: var(--color-background-tertiary, var(--fallback-surface));
+  --card: var(--color-background-secondary, var(--fallback-panel));
+  --popover: var(--color-background-secondary, var(--fallback-panel));
+  --input-surface: var(--color-background-secondary, var(--fallback-panel));
+  --foreground: var(--color-text-primary, var(--fallback-foreground));
+  --muted-foreground: var(--color-text-secondary, var(--fallback-subtle));
+  --subtlest-foreground: var(--color-text-tertiary, var(--fallback-subtlest));
+  --primary: var(--color-background-inverse, var(--fallback-primary));
+  --primary-foreground: var(--color-text-inverse, var(--fallback-inverse));
+  --secondary: var(--color-background-disabled, var(--fallback-secondary));
+  --muted: var(--color-background-ghost, var(--fallback-hover));
+  --border: var(--color-border-primary, var(--fallback-border));
+  --border-hover: var(--color-border-secondary, var(--fallback-border-hover));
+  --input: var(--border);
+  --ring: var(--color-ring-primary, var(--primary));
+  --destructive: var(--color-background-danger, var(--fallback-danger));
+  --destructive-foreground: var(--color-text-inverse, var(--fallback-inverse));
+  --success: var(--color-text-success, var(--fallback-success));
+  --warning: var(--color-text-warning, var(--fallback-warning));
+  /* @theme inline 会被 utility 扫描裁剪；普通 CSS consumer 必须始终在主题根读到公共属性。 */
+  --color-background: var(--background);
+  --color-background-alt: var(--background-alt);
+  --color-surface: var(--surface);
+  --color-card: var(--card);
+  --color-card-border: var(--color-border-tertiary, var(--border));
+  --color-popover: var(--popover);
+  --color-popover-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-foreground-subtle: var(--muted-foreground);
+  --color-foreground-subtlest: var(--subtlest-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-hover: var(--muted);
+  --color-selected: var(--muted);
+  --color-border: var(--border);
+  --color-border-hover: var(--border-hover);
+  --color-input: var(--input-surface);
+  --color-input-focused: var(--input-surface);
+  --color-input-border: var(--border);
+  --color-input-border-hover: var(--border-hover);
+  --color-input-border-focused: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --ui-font-size: var(--font-text-md-size, 14px);
+  --text-ui-base: var(--ui-font-size);
+  --text-ui-xl: calc(var(--ui-font-size) + 4px);
+  --text-ui-lg: var(--font-text-lg-size, calc(var(--ui-font-size) + 2px));
+  --text-ui-caption: calc(var(--ui-font-size) - 1px);
+  --text-ui-sm: var(--font-text-sm-size, calc(var(--ui-font-size) - 2px));
+  --text-ui-xs: var(--font-text-xs-size, calc(var(--ui-font-size) - 4px));
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-family: var(--font-sans);
+  font-size: var(--ui-font-size);
+  line-height: var(--font-text-md-line-height, 1.5);
+  color: var(--foreground);
+  accent-color: var(--primary);
+}
+:where(.zcode-plugins-theme[data-theme="dark"]) {
+  --fallback-background: #161616;
+  --fallback-panel: #2b2b2b;
+  --fallback-surface: #242424;
+  --fallback-foreground: #f5f5f5;
+  --fallback-subtle: #b3b3b3;
+  --fallback-subtlest: #999999;
+  --fallback-border: rgb(255 255 255 / 10%);
+  --fallback-border-hover: rgb(255 255 255 / 25%);
+  --fallback-hover: rgb(255 255 255 / 5%);
+  --fallback-primary: #ffffff;
+  --fallback-inverse: #000000;
+  --fallback-secondary: #363636;
+  --fallback-danger: #ff5c5c;
+  --fallback-success: #4ade80;
+  --fallback-warning: #facc15;
+}
+
+/* Generated primitives stay byte-identical; design adaptation belongs exclusively here. */
+.zcode-plugins-theme .zcode-ui-button {
+  font-size: var(--ui-font-size);
+  border-radius: var(--border-radius-lg, 8px);
+  transition-property: background-color, border-color, color, opacity, transform;
+  transition-duration: 150ms;
+}
+/* CLI 的 cn 不认识自定义 text-ui-* 字阶，会把原语文字颜色合并掉；在公共适配层按语义恢复，不改生成源。 */
+.zcode-plugins-theme .zcode-ui-button[data-variant="default"] {
+  color: var(--primary-foreground);
+}
+.zcode-plugins-theme .zcode-ui-button:is([data-variant="outline"], [data-variant="secondary"], [data-variant="ghost"]) {
+  color: var(--foreground);
+}
+.zcode-plugins-theme .zcode-ui-button[data-variant="link"] { color: var(--primary); }
+.zcode-plugins-theme .zcode-ui-button[data-variant="destructive"] {
+  background: var(--destructive);
+  color: var(--destructive-foreground);
+}
+.zcode-plugins-theme .zcode-ui-input {
+  background: var(--input-surface);
+  border-color: var(--border);
+  font-size: var(--ui-font-size);
+  border-radius: var(--border-radius-lg, 8px);
+}
+.zcode-plugins-theme .zcode-ui-input:hover:not(:disabled) { border-color: var(--border-hover); }
+.zcode-plugins-theme .zcode-ui-input:focus-visible {
+  border-color: var(--ring);
+  box-shadow: none;
+}
+.zcode-plugins-theme .zcode-ui-input::placeholder { color: var(--subtlest-foreground); }
+.zcode-plugins-theme .zcode-ui-label { font-size: var(--ui-font-size); }
+.zcode-ui-dialog {
+  font-size: var(--ui-font-size);
+  border: var(--border-width-regular, 1px) solid var(--border);
+  box-shadow: var(--shadow-md, 0 4px 16px rgb(0 0 0 / 10%));
+}
+.zcode-ui-dialog [data-slot="dialog-title"] { font-size: var(--ui-font-size); }
+.zcode-ui-dialog [data-slot="dialog-description"] { color: var(--muted-foreground); font-size: var(--font-text-sm-size, calc(var(--ui-font-size) - 2px)); }
+@media (prefers-reduced-motion: reduce) {
+  .zcode-plugins-theme *, [data-slot="dialog-overlay"] {
+    animation: none !important;
+    transition: none !important;
+  }
+  .zcode-plugins-theme [data-slot="button"] { transform: none !important; }
+}

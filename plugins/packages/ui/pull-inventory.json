@@ -1,0 +1,33 @@
+{
+  "cli": "shadcn@4.23.0",
+  "registry": "https://ui.shadcn.com/r",
+  "style": "radix-nova",
+  "pulledAt": "2026-11-23",
+  "components": [
+    "button",
+    "input",
+    "textarea",
+    "label",
+    "dialog"
+  ],
+  "commands": [
+    "npx --yes shadcn@4.23.0 init --base radix --preset nova --no-monorepo -y",
+    "npx --yes shadcn@4.23.0 add button input textarea label dialog -y",
+    "Configure package-local #components/#lib aliases in components.json + tsconfig before final regeneration",
+    "npx --yes shadcn@4.23.0 add button input textarea label dialog -y -o"
+  ],
+  "notes": [
+    "Ran in an isolated temp Vite workspace; copied source bytes without edits. CLI package/CSS side effects were not copied.",
+    "components.json is the final pull configuration. CLI generated utilities and components use cn@0.5.2.",
+    "Public barrel/package metadata are hand-authored, not registry source.",
+    "To update, regenerate in an isolated temp directory then refresh hashes. Never format/edit generated source."
+  ],
+  "sha256": {
+    "src/components/ui/button.tsx": "08e5f87833c5db8436e89337ebde0f776bcdbf649d3de69fb89be6441ca2e366",
+    "src/components/ui/input.tsx": "75418e030b2a54dd017ac0f4588db4bbdbabca7525e88bbc9d84cb3e18bcb905",
+    "src/components/ui/textarea.tsx": "82601c91ffc6c727d924162c78d7cb853114bcced4e2eb922a68ca12d4239c0f",
+    "src/components/ui/label.tsx": "b823de7355666bd6a6a2cf88a6630e436d021b38fdbef5b749fac0921b86f44d",
+    "src/components/ui/dialog.tsx": "78b56c6fb355cf122800593eaf01c1db711be85d34767bb9a6d593616d1fa0c0",
+    "src/lib/utils.ts": "14300d758170c270c75b057f38fedb3793a5920ea872f0477e29fb131185e8a7"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "name": "@zcode-plugins/uis",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./styles.css": "./src/styles.css"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "dev:acceptance": "vite --config acceptance/vite.config.ts",
+    "build:acceptance": "vite build --config acceptance/vite.config.ts",
+    "test:browser": "node acceptance/browser-check.mjs"
+  },
+  "dependencies": {
+    "@zcode-plugins/theme": "workspace:*",
+    "@zcode-plugins/ui": "workspace:*",
+    "tailwindcss": "catalog:",
+    "tw-animate-css": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "@playwright/test": "catalog:",
+    "@tailwindcss/vite": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:"
+  }
+}

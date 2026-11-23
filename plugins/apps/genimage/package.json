@@ -1,0 +1,38 @@
+{
+  "name": "@zcode-plugins/genimage",
+  "version": "0.1.1",
+  "private": true,
+  "description": "No-cost GenImage canvas MCP App: React fullscreen canvas served over a stdio MCP resource; no provider, billing, or persistence.",
+  "type": "module",
+  "main": "./dist/server.mjs",
+  "scripts": {
+    "dev": "vite --open /canvas.html",
+    "build": "node scripts/build-market.mjs",
+    "build:runtime": "node scripts/build-runtime.mjs",
+    "typecheck": "tsc -p tsconfig.browser.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "test": "node scripts/build-market.mjs && node --test test/mcp-smoke.test.mjs",
+    "test:browser": "node scripts/build-runtime.mjs && node scripts/browser-smoke.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "catalog:",
+    "@zcode-plugins/uis": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "catalog:",
+    "@playwright/test": "catalog:",
+    "@tailwindcss/vite": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "esbuild": "catalog:",
+    "tailwindcss": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plugin-singlefile": "catalog:"
+  },
+  "engines": {
+    "node": ">=24.14 <25"
+  }
+}

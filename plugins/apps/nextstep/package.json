@@ -1,0 +1,20 @@
+{
+  "name": "@zcode-plugins/nextstep",
+  "version": "0.1.2",
+  "private": true,
+  "description": "Generate and persist optional next-step suggestions after successful local conversation turns.",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node scripts/build.mjs && node --test test/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "esbuild": "catalog:",
+    "typescript": "catalog:"
+  },
+  "engines": {
+    "node": ">=24.14 <25"
+  }
+}

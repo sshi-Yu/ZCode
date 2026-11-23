@@ -226,6 +226,7 @@
     ".agents/skills",
     "packages/formal-proof",
     "apps/zcode-cli",
+    "plugins",
     "packages/zcode-cua",
     "docs/electron"
   ]
