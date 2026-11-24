@@ -4,11 +4,11 @@ import { Button, Input, Label, Textarea } from "@zcode-plugins/uis";
 import type { HostThemeStore } from "@zcode-plugins/uis";
 import { Illustration, INITIAL_NODES, fixtureTimeLabel } from "./fixture.js";
 import { localeFromHost, stringsFor } from "./strings.js";
-import { useHostBridge } from "./use-host-bridge.js";
+import type { PageBridge } from "./use-host-bridge.js";
 import { BRIEF_MAX_CODE_POINTS, MAX_NODES, MAX_SCALE, MIN_SCALE, NODE_HEIGHT, NODE_WIDTH } from "./types.js";
-import type { Camera, CanvasNode, HostStatus, PanelId, PanelState, Ratio } from "./types.js";
+import type { Camera, CanvasNode, PanelId, PanelState, Ratio } from "./types.js";
 
-interface CanvasProps { themeStore: HostThemeStore }
+interface CanvasProps { themeStore: HostThemeStore; bridge: PageBridge }
 interface Drag { pointer: number; sx: number; sy: number; x: number; y: number; node: string | null; moved: boolean }
 
 type CameraAction = (previous: Camera) => Camera;
@@ -52,7 +52,7 @@ function Icon({ name }: { name: "plus" | "minus" | "close" | "history" | "settin
  * 明确事件序：host tool-result → 有界校验 → 仅空草稿回填 → 打开编辑浮窗（从不提交）。
  * 模拟提交 → 校验 → 追加一个新节点；source 来自明确选择，拖动与布局不改谱系。
  */
-export function Canvas({ themeStore }: CanvasProps) {
+export function Canvas({ themeStore, bridge }: CanvasProps) {
   const [nodes, setNodes] = useState<CanvasNode[]>(() => INITIAL_NODES.map((node) => ({ ...node })));
   const [camera, setCamera] = useState<Camera>(() => cameraForFit(INITIAL_NODES));
   const [selected, setSelected] = useState<string | null>("B");
@@ -64,10 +64,11 @@ export function Canvas({ themeStore }: CanvasProps) {
   // locale 与颜色同属已校验宿主投影；不能从原始通知另建写路径，非法局部更新须保留先前语种。
   const hostTheme = useSyncExternalStore(themeStore.subscribe, themeStore.getSnapshot, themeStore.getSnapshot);
   const locale = localeFromHost(hostTheme.locale);
-  const [hostStatus, setHostStatus] = useState<HostStatus>("standalone");
+  const hostStatus = bridge.status;
   const [toast, setToast] = useState("");
   const [dragging, setDragging] = useState(false);
   const viewportRef = useRef<HTMLElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const newButtonRef = useRef<HTMLButtonElement>(null);
@@ -111,7 +112,13 @@ export function Canvas({ themeStore }: CanvasProps) {
     openCreate(null, newButtonRef.current);
     notify(strings.toastBriefApplied);
   }, [notify, openCreate, prompt, strings]);
-  useHostBridge({ themeStore, onBrief: receiveBrief, onStatus: setHostStatus, onTeardown: teardown });
+  const consumedBrief = useRef<PageBridge["brief"]>(null);
+  useEffect(() => {
+    if (bridge.brief && consumedBrief.current !== bridge.brief) {
+      consumedBrief.current = bridge.brief;
+      receiveBrief(bridge.brief.value, bridge.brief.isError);
+    }
+  }, [bridge.brief, receiveBrief]);
 
   useEffect(() => () => { teardown(); }, [teardown]);
   useEffect(() => {
@@ -152,7 +159,8 @@ export function Canvas({ themeStore }: CanvasProps) {
     if (!active.current) return;
     if (event.key === "Escape") { if (panel) { event.preventDefault(); closePanel(); } return; }
     const target = event.target;
-    if (target instanceof Element && target.closest("input,textarea,select")) return;
+    // 浮窗按钮的按键也会冒泡到 document；交还默认行为，避免画布改选并抢走焦点。
+    if (target instanceof Element && (panelRef.current?.contains(target) || target.closest("input,textarea,select"))) return;
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     const node = nodes.find((item) => item.id === selected);
     if (event.key === "+" || event.key === "=") { event.preventDefault(); zoom(1.2); }
@@ -303,7 +311,7 @@ export function Canvas({ themeStore }: CanvasProps) {
     </nav>
     <p className="canvas-help">{strings.canvasHelp}</p>
     <div className="floating session-state"><span className="status-dot" aria-hidden="true" /><span className="host-label">{hostStatus === "connected" ? strings.hostConnected : hostStatus === "handshake-failed" ? strings.hostHandshakeFailed : hostStatus === "fullscreen-denied" ? strings.hostFullscreenDenied : strings.hostStandalone}</span><span className="badge">{strings.badgeFixture}</span><Button ref={helpButtonRef} variant="ghost" size="icon" aria-label={strings.helpTitle} onClick={(event) => { openPanel("help", event.currentTarget); }}><Icon name="info" /></Button></div>
-    {panel ? <section className="floating panel" role="dialog" aria-labelledby="panel-title" tabIndex={-1}>
+    {panel ? <section ref={panelRef} className="floating panel" role="dialog" aria-labelledby="panel-title" tabIndex={-1}>
       <div className="panel-head"><h2 id="panel-title">{panelTitle}{panel.id === "history" ? <span className="badge">{nodes.length}</span> : null}</h2><Button ref={closeRef} variant="ghost" size="icon" aria-label={strings.closePanel(panelTitle)} onClick={() => { closePanel(); }}><Icon name="close" /></Button></div>
       {panel.id === "create" ? <form className="panel-body" onSubmit={submit}>
         {sourceNode ? <div className="source-card"><Illustration art={sourceNode.art} ratio={sourceNode.ratio} title={sourceNode.title} className="source-thumb" /><div><strong>{strings.sourceTitle(sourceNode.id, sourceNode.title)}</strong><p className="small muted">{strings.sourceNote}</p></div></div> : null}

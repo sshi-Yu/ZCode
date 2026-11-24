@@ -82,6 +82,7 @@ export function ConfirmDialogHost() {
   const cancelLabel = displayedRequest?.cancelLabel ?? intl.formatMessage({ id: "common.cancel" });
   const compact = displayedRequest?.compact === true;
   const destructive = displayedRequest?.confirmVariant === "destructive";
+  const explicitConfirm = displayedRequest?.explicitConfirm === true;
   const cancelRef = useRef<HTMLButtonElement>(null);
   const requiredAcknowledgement = displayedRequest?.requiredAcknowledgement === true;
 
@@ -101,7 +102,7 @@ export function ConfirmDialogHost() {
   }, [settleConfirmation]);
 
   useEffect(() => {
-    if (!open || destructive || isYoloConfirmation) {
+    if (!open || destructive || explicitConfirm || isYoloConfirmation) {
       return;
     }
 
@@ -128,7 +129,14 @@ export function ConfirmDialogHost() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [open, destructive, isYoloConfirmation, settleConfirmation, displayedRequest]);
+  }, [
+    open,
+    destructive,
+    explicitConfirm,
+    isYoloConfirmation,
+    settleConfirmation,
+    displayedRequest,
+  ]);
 
   if (isYoloConfirmation) {
     return (
@@ -244,7 +252,7 @@ export function ConfirmDialogHost() {
         data-confirm-intent={displayedRequest?.intent}
         data-testid={displayedRequest?.testId}
         onOpenAutoFocus={(event) => {
-          if (destructive) {
+          if (destructive || explicitConfirm) {
             event.preventDefault();
             cancelRef.current?.focus();
           }
@@ -353,7 +361,7 @@ export function ConfirmDialogHost() {
             )}
             <Button
               type="button"
-              autoFocus={!destructive}
+              autoFocus={!destructive && !explicitConfirm}
               // 普通确认沿用主按钮；仅显式声明 destructive 的不可恢复动作使用危险色。
               variant={displayedRequest?.confirmVariant ?? "default"}
               size={"lg"}
@@ -366,7 +374,7 @@ export function ConfirmDialogHost() {
               )}
             >
               <span>{confirmLabel}</span>
-              {!destructive && displayedRequest?.showKeyboardHints !== false ? (
+              {!destructive && !explicitConfirm && displayedRequest?.showKeyboardHints !== false ? (
                 <span
                   className={
                     displayedRequest?.confirmVariant === "destructive"

@@ -1,5 +1,27 @@
 # Plugin Management Lifecycle E2E Coverage Matrix
 
+## PLM-GENIMAGE-WORKSPACE
+
+GI01–GI03 为应用级生图候选，保留 `manual-review/pending`，未做人工晋级或 Docker/CI admission。桌面路径 `packages/desktop/test/e2e/plugins/extensions/manual-review/pending/plugin-management-genimage-workspace.test.ts`。Windows x64 验收使用隔离 profile、实际市场产物与回环 Images 夹具；E2E 以 inline seed 加载市场产物，不等于市场安装 UI 验收，也未调用付费服务。
+
+- 最终完整运行 `packages/desktop/.e2e-artifacts/desktop-e2e-20261124-092516-829`：1 passed，`test-results.ndjson` 记录 159,930ms、无重试。覆盖无会话 app 主区、未配置禁用、设置返回生图、Enter 取消零请求、真实 SDK 至少 59 秒等待取消零请求、显式确认单次固定模型请求、原图导出字节一致、首次冷重启恢复同一资产且请求数为 1、第二次发送后断连的 `outcome_unknown`、第二次冷重启恢复成功与未知两条记录且请求数严格为 2，聊天默认模型前后不变。等待期间仅对当前 E2E 进程中按 Renderer URL 匹配的唯一窗口设置 `setIgnoreMouseEvents(true)`，`finally` 恢复；guest 选中使用标准 DOM 焦点事件、保存对话框返回隔离目标，不代表原生焦点/鼠标或人工选择文件路径通过。GI02/GI03 的本地回环业务链通过；GI01 跨项目部分仍未覆盖。
+
+### 前序诊断记录
+
+- 首轮 `packages/desktop/.e2e-artifacts/desktop-e2e-20261124-070220-781`：1 passed，覆盖无选中会话打开 app 主区、未配置禁用、取消零请求、显式确认单次固定模型请求与 PNG 成功资产；不含 GI03。
+- 第二轮 `packages/desktop/.e2e-artifacts/desktop-e2e-20261124-072547-062` 与 export30m 产物轮 `packages/desktop/.e2e-artifacts/desktop-e2e-20261124-074450-977`：均为 1 failed。已执行设置返回生图、真实 SDK 60 秒取消后零上游请求、显式确认后单次请求及成功资产、聊天默认模型保持；在详情/导出控件等待超时停止，导出字节、冷重启与未知不重发断言未执行，不能计入通过。
+- 最终插件产物 `plugins/apps/genimage/dist/market-app-export30m-final-20261124`：安装协议冒烟 6/6，旧会话画布与应用画布生产浏览器冒烟通过。浏览器覆盖 W6 节点前插/重排坐标稳定、主题/语言、键盘、导出专用 30 分钟 SDK 选项与等待单飞。市场 `genimage/dist/canvas.html` SHA-256 为 `d655a08cec4260f00351bb7be4eb91c8b24c3beaaa60036eaf43194412060fa0`。
+- `packages/desktop/.e2e-artifacts/desktop-e2e-20261124-075727-228`：1 failed，键盘 Escape 注入未关闭插件帧里的 create 浮窗，GI03 后续断言仍未执行。该轮不证明产品键盘缺陷；浏览器真鼠标验证 900/600/360px 宽下关闭浮窗后可打开详情并单次导出。
+- `packages/desktop/.e2e-artifacts/desktop-e2e-20261124-080520-998`：1 failed，WDIO wrapper 在 120,011ms 触发总期限，函数体内 `this.timeout` 未延长已建立的外层计时器。成功资产已出现，原图导出、重启和未知结果断言尚未执行；不计为产品导出失败或 GI03 通过。
+- 保留开发版启动记录为 `packages/desktop/.e2e-artifacts/genimage-user-20261124073752791/launch.json`。真实市场 CLI 安装最终插件，Host 和模型配置就绪；原生工具已读到入口和控件，但操作被 CUA harness 以 `surface_replaced / action_sent:false` 拒绝，未计入原生点击或主题现场通过。该实例于 2026-11-24 08:22:50Z 走 `tray-quit` 显式正常退出（exit 0），日志无法证明触发者，未自动重启；隔离 profile 与产物保留，夹具仍健康且累计请求为 0。
+- 长预算复跑 `packages/desktop/.e2e-artifacts/desktop-e2e-20261124-081931-783` 已通过现有单次命令环境变量将 worker 外层预算设为 720,000ms，未修改产品或全局测试默认值。第二次确认出现约 54 秒后关闭，`plugin-management-genimage-workspace.test.ts` 的 SDK 取消后零请求断言预期 0、实际收到 1 次回环 POST；此前未配置与 Enter 取消的零请求断言均通过。当前源码取消分支返回 `false`，本轮 Renderer 快照含当前取消接线，WebDriver 未记录第二次确认期间的输入；外部输入与确认结果来源仍待被动事件取证，该轮失败不能计为 SDK 取消或 GI03 通过。
+- 被动取证轮 `packages/desktop/.e2e-artifacts/desktop-e2e-20261124-083252-117`：1 failed，停于详情导出按钮等待，尚未执行保存字节与恢复。第二次确认 08:34:12.226Z 打开、08:35:12.317Z 关闭，中间未记录确认框输入，SDK 默认期限取消后请求数为 0；随后测试显式确认的可信 pointer/click 于 08:35:12.555Z 到达，08:35:12.595Z 才收到首个回环 POST，成功资产出现。该证据确认本轮取消与显式提交路径，上一轮 54 秒异常未复现且仍未归因，详情失败需记录帧内选中状态进一步定位。
+- 选中状态取证轮 `packages/desktop/.e2e-artifacts/desktop-e2e-20261124-084054-791`：1 failed，第二次确认无输入等待 60.070 秒后取消且零请求，显式确认后单次请求与成功资产均通过。停于 `.selected` 条件；快照为 `activeTag=ARTICLE`、`activeIsNode=true`、`nodeClass=node`、`document.hasFocus()=false`、节点连接且含 job/asset ID，说明该轮程序聚焦未形成页面选中状态。未执行原图保存和两次恢复；后续业务 E2E 使用标准 DOM 焦点事件驱动现有处理器，原生焦点操作不据此计为通过。
+- DOM 焦点事件驱动轮 `packages/desktop/.e2e-artifacts/desktop-e2e-20261124-084653-300`：已验证真实 SDK 取消零请求、显式确认单次生成、原图导出字节一致、首次保留 profile 冷重启恢复同一资产且请求数仍为 1、第二次请求断连后显示 `outcome_unknown`。第二次重启后，用例复用了旧 WebDriver session 的入口元素，报 `invalid session id`（1 failed）；最终读取与请求数 2 的断言未执行，不能计作 GI03 全通过。候选仅修正为重启后重新查询元素，再完整复跑。
+- 重启元素修正轮 `packages/desktop/.e2e-artifacts/desktop-e2e-20261124-085505-005`：1 failed，等待第二次确认期间，08:57:20.728Z 对确认按钮记录可信 pointerdown，08:57:20.816Z 记录可信 click，随后 08:57:20.872Z 收到 POST；脚本此阶段仅等待。该轮证明等待时发生了输入，不能证明输入来源，也不能归因 SDK 自动提交或特定操作者；零请求断言失败，GI03 未继续。后续仅隔离被测窗口的等待阶段并保留真实 SDK 期限、输入追踪与全部业务断言。
+- 隐藏窗口隔离轮 `packages/desktop/.e2e-artifacts/desktop-e2e-20261124-090634-302`：1 failed，隐藏后未出现第二次确认，输入追踪为空，未到达 SDK 取消或 GI03。该方式改变可见性，不作为通过证据；后续保留窗口可见，仅在等待阶段隔离被测进程窗口的原生鼠标，并在 `finally` 恢复，真实期限与零请求断言不变。
+- GI01 的跨项目图库一致性、插件重载及真实手机/远端和 macOS/Linux 运行仍未验证。GI03 第二次重启后的最终读取已由上述 `092516-829` 运行闭环；本候选不自动晋级。
+
 ## 2026-11-10 扩展候选转正
 
 本轮复核 `plugins/extensions/manual-review/pending/` 的 15 个宿主能力候选。产品场景沿用

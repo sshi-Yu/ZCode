@@ -1032,9 +1032,12 @@ export function App({
   const handleSelectNextConversation = useCallback(() => {
     handleSelectAdjacentConversation("next");
   }, [handleSelectAdjacentConversation]);
-  const handlePrimaryNavigationBack =
-    workspaceMainView === "plugin-store" ? handleNavigateToTaskMain : handleTaskNavBack;
-  const canPrimaryNavigationBack = workspaceMainView === "plugin-store" || canTaskNavBack;
+  const hasStandaloneMainView =
+    workspaceMainView === "plugin-store" || workspaceMainView === "genimage";
+  const handlePrimaryNavigationBack = hasStandaloneMainView
+    ? handleNavigateToTaskMain
+    : handleTaskNavBack;
+  const canPrimaryNavigationBack = hasStandaloneMainView || canTaskNavBack;
   const shellPanelIds = useMemo(() => ["sidebar", "content"], []);
 
   useAppKeyboard({

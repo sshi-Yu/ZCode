@@ -2,6 +2,18 @@ version: 1
 
 # 存量模块先标记为 legacy；新模块或完成迁移的模块设置 managed: true。
 modules:
+  - id: image-generation
+    roots: [packages/services/src/image-generation]
+    managed: true
+    requires: [services]
+    publicEntrypoints:
+      [
+        packages/services/src/image-generation/index.ts,
+        packages/services/src/image-generation/contract.ts,
+        packages/services/src/image-generation/node.ts,
+      ]
+    layers: { adapters: . }
+    owner: desktop-settings
   # windows-runtime-host：由 architecture:adopt 登记
   - id: windows-runtime-host
     roots:
@@ -2247,6 +2259,10 @@ exceptions:
     rule: unmanaged-new-file
     paths: [packages/shared/src/userInstructions.ts]
     reason: 用户自定义指令字节上限共享常量（与 CLI 读取截断对齐，spec：docs/ui/settings-personalization.md），服务层校验与 UI 计数共用同一数值；仅两个常量导出，接管整个 shared 目录不在本次范围内。
+  - id: desktop-image-generation-composition
+    rule: unmanaged-new-file
+    paths: [packages/desktop/src/host/imageGenerationService.ts]
+    reason: Window Host 生图装配绑定本机凭据、网络传输和 PNG 编解码器。业务状态由 image-generation 模块独占，整个 Desktop Host 目录的接管不在本次范围内。
   - id: remote-workspace-admission-deadline-existing-edit
     rule: unmanaged-new-file
     paths: [packages/desktop/src/host/remoteWorkspacePreparation.ts]

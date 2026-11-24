@@ -1,7 +1,15 @@
 {
   "name": "genimage",
   "version": "0.1.1",
-  "description": "Open the GenImage infinite canvas with local, no-cost fixture data.",
+  "description": "GenImage app workspace with host-managed image generation, alongside the no-cost MCP session canvas preview.",
+  "extension": {
+    "engines": { "zcode": "^1.0.0" },
+    "main": "./dist/extension.mjs",
+    "activationEvents": ["onView:workspace"],
+    "contributes": {
+      "views": [{ "id": "workspace", "title": { "en": "GenImage", "zh-CN": "GenImage 生图画布" }, "icon": "image", "scope": "app" }]
+    }
+  },
   "mcpServers": {
     "genimage": {
       "type": "stdio",

@@ -12,6 +12,7 @@ import {
   IFeedbackService,
   IGenUiService,
   IHighspeedCardService,
+  IImageGenerationService,
   createWindowProjectChangesService,
   type ServiceExposurePolicy,
   type ZCodeAgentV4ClientMode,
@@ -140,6 +141,8 @@ export function exposeWindowHostAttachmentServices(params: {
   overrides?: ReadonlyMap<string, unknown>;
   attachmentScope?: { kind: "local" | "remote" | "source-settings" };
   windowServices?: ServiceCollection;
+  /** 独立于通用集合，仅向本机桌面 base MessagePort 发布。 */
+  imageGenerationService?: IImageGenerationService;
   /** 手机窗口目录与 project 频道同样叠加实时交互，避免远端 scope 下列表缺「待处理」。 */
   decorateWindowProjectService?: (service: IProjectService) => IProjectService;
 }): void {
@@ -176,6 +179,16 @@ export function exposeWindowHostAttachmentServices(params: {
         : {}),
     },
   );
+  if (
+    params.clientMode === "desktop-continuous" &&
+    params.attachmentScope?.kind === "local" &&
+    params.imageGenerationService
+  ) {
+    params.server.registerChannel(
+      IImageGenerationService.channelName,
+      ProxyChannel.fromService(params.imageGenerationService),
+    );
+  }
   if (params.clientMode === "web-remote-replayable") {
     if (params.attachmentScope?.kind === "local") {
       const highspeed = params.services.getOptional(IHighspeedCardService);

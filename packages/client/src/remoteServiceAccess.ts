@@ -33,6 +33,7 @@ import {
   IExtensionsService,
   IExtensionViewsService,
   IExtensionGrantsService,
+  IImageGenerationService,
   IVoiceInputService,
   IUsageStatsService,
   ICodingPlanSubscriptionService,
@@ -118,6 +119,7 @@ export class RemoteServiceAccess implements IServiceAccessor {
   readonly extensionsService?: IExtensionsService;
   readonly extensionViewsService?: IExtensionViewsService;
   readonly extensionGrantsService?: IExtensionGrantsService;
+  readonly imageGenerationService?: IImageGenerationService;
   readonly voiceInputService?: IVoiceInputService;
   readonly usageStatsService: IUsageStatsService;
   readonly codingPlanSubscriptionService: ICodingPlanSubscriptionService;
@@ -290,6 +292,12 @@ export class RemoteServiceAccess implements IServiceAccessor {
     this.extensionGrantsService = options.extensionsService
       ? ProxyChannel.toService<IExtensionGrantsService>(
           channelClient.getChannel(IExtensionGrantsService.channelName),
+        )
+      : undefined;
+    // 应用级画布沿用同一个桌面 base 能力开关；远端/Web 不构造惰性代理。
+    this.imageGenerationService = options.extensionsService
+      ? ProxyChannel.toService<IImageGenerationService>(
+          channelClient.getChannel(IImageGenerationService.channelName),
         )
       : undefined;
     this.providerProvisioningStatusService = options.deviceSyncStateService

@@ -3,6 +3,14 @@
 本文定义 Desktop 本地插件管理的用户级生命周期合同。只有包含独立 setup、action、assertion
 和 evidence 的 case 才算覆盖；仅从某条长路径中经过某状态不算覆盖。
 
+## PLM-GENIMAGE-WORKSPACE
+
+| Case | Setup | Action and assertion |
+| --- | --- | --- |
+| GI01 | 隔离桌面 profile，安装市场 GenImage | 无会话进入一级「生图」，视图 scope 为 app。切项目后仍读同一画布。 |
+| GI02 | 未配置或已配置 Images，夹具可计数 | 未配置和取消确认均为零请求。确认后单次请求使用生图模型，聊天选择保持原值。 |
+| GI03 | 回环 Images 夹具返回 PNG 或断连 | 成图导出字节一致，重启恢复。可能已发送的失败显示结果未知，读取不重发。 |
+
 ## Scope and state ownership
 
 - Included：Desktop local workspace、user-scope plugin storage、Public/Personal、Builtin、CDN、

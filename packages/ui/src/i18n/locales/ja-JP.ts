@@ -2558,6 +2558,21 @@ const jaJP: Record<string, string> = {
   "workspace.openWorkspace": "ワークスペースを開く",
   "workspace.openFolder": "フォルダを開く",
   "workspace.openPluginsSettings": "プラグインマーケットプレイス",
+  "genimage.title": "画像生成",
+  "genimage.modelSettings": "画像生成モデル",
+  "genimage.confirm.title": "画像を1枚生成しますか？",
+  "genimage.confirm.description":
+    "モデル：{model}\n\nプロンプト：\n{prompt}\n\nプロバイダーから料金が請求される場合があります。",
+  "genimage.confirm.submit": "画像を生成",
+  "genimage.export.failed": "元の画像を保存できませんでした。",
+  "genimage.plugin.activate": "マーケットプレイスで GenImage を有効化してください。",
+  "genimage.plugin.unavailable":
+    "マーケットプレイスで GenImage をインストールまたは有効にしてください。",
+  "genimage.settings.configured": "API キーを設定済み",
+  "genimage.settings.unconfigured": "API キーは未設定",
+  "genimage.settings.apiKey": "OpenAI API キー",
+  "genimage.settings.remove": "キーを削除",
+  "genimage.settings.error": "画像生成キーを読み込みまたは更新できませんでした。",
   "workspace.backToWorkspace": "ワークスペースに戻る",
   "workspace.wslUncPrompt.title": "WSL リモート接続で開きますか？",
   "workspace.wslUncPrompt.description":

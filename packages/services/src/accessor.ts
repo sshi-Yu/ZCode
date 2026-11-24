@@ -64,6 +64,7 @@ import type { ISourceServerWorkspaceService } from "./source-server-workspace/so
 import type { ISourceServerManagementService } from "./source-server-management/sourceServerManagement.js";
 import type { IOnboardingRecordService } from "./onboarding/onboardingRecord.js";
 import type { IConversationShareService } from "./conversation-share/conversationShare.js";
+import type { IImageGenerationService } from "./image-generation/index.js";
 
 /** UI 层消费的统一服务接口 */
 export interface IServiceAccessor {
@@ -115,6 +116,8 @@ export interface IServiceAccessor {
   readonly extensionViewsService?: IExtensionViewsService;
   /** 仅桌面本机 Host 注册：扩展授权（与 extensionsService 同一开关，§17.7）。Web / 手机 / 远端不提供。 */
   readonly extensionGrantsService?: IExtensionGrantsService;
+  /** 仅本机桌面 base attachment：应用级生图配置、任务与原图；远端和手机不提供。 */
+  readonly imageGenerationService?: IImageGenerationService;
   /** 语音输入；只在桌面 base 连接存在 */
   readonly voiceInputService?: IVoiceInputService;
   readonly usageStatsService: IUsageStatsService;

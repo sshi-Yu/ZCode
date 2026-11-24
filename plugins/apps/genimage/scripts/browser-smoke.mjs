@@ -89,11 +89,36 @@ try {
   await canvas.locator("#prompt").press("Escape");
   assert.equal(await canvas.getByRole("button", { name: "New", exact: true }).evaluate((element) => element === document.activeElement), true);
 
+  // 浮窗里的键盘操作不改变画布；关闭后画布节点仍可用方向键导航。
+  const historyButton = canvas.getByRole("button", { name: "History", exact: true });
+  const rootNode = canvas.locator('.node[data-id="A"]');
+  const childNode = canvas.locator('.node[data-id="B"]');
+  await childNode.focus();
+  await historyButton.click();
+  const history = canvas.getByRole("dialog", { name: "History 3", exact: true });
+  const closeHistory = history.getByRole("button", { name: "Close History", exact: true });
+  const panelCamera = await canvas.locator("#world").getAttribute("style");
+  const panelNodePosition = await childNode.getAttribute("style");
+  for (const key of ["ArrowLeft", "Shift+ArrowRight", "+", "n", "?"]) {
+    await page.keyboard.press(key);
+    assert.equal(await history.count(), 1, `${key} must leave History open`);
+    assert.equal(await closeHistory.evaluate((element) => element === document.activeElement), true, `${key} must leave focus in History`);
+  }
+  assert.equal(await canvas.locator("#world").getAttribute("style"), panelCamera);
+  assert.equal(await childNode.getAttribute("style"), panelNodePosition, "Floating panel keys must not nudge the selected node");
+  await page.keyboard.press("Escape");
+  assert.equal(await history.count(), 0);
+  assert.equal(await historyButton.evaluate((element) => element === document.activeElement), true);
+  await childNode.press("ArrowLeft");
+  assert.equal(await rootNode.evaluate((element) => element === document.activeElement), true);
+  await canvas.getByRole("button", { name: "Fit all", exact: true }).click();
+  const beforePan = await canvas.locator("#world").getAttribute("style");
+
   // 空白拖拽与滚轮改变相机，节点拖动只改变位置，不改变来源。
   const blank = await canvas.locator("#viewport").boundingBox();
   await page.mouse.move(blank.x + 820, blank.y + 600);
   await page.mouse.down(); await page.mouse.move(blank.x + 850, blank.y + 625, { steps: 4 }); await page.mouse.up();
-  assert.notEqual(await canvas.locator("#world").getAttribute("style"), beforeTransform);
+  assert.notEqual(await canvas.locator("#world").getAttribute("style"), beforePan);
   const beforeWheel = await canvas.locator("#world").getAttribute("style");
   await page.mouse.wheel(0, -50);
   await canvas.locator("#world").evaluate((element, before) => new Promise((resolve) => {

@@ -150,10 +150,7 @@ export interface ExtensionViewSidePaneTab {
   icon?: string;
   /** 打开对象：file.viewer 打开文件时带，交给视图实例的 view.input。 */
   input?: ExtensionViewInput;
-  /**
-   * 视图声明了 scope: "app"（§18.1 H5）：打开时按静态表记下。这样的标签跟着当前工作区移动，
-   * 切换工作区不卸载、不重建实例。file.viewer 的文件标签不带它。
-   */
+  /** App 作用域标签随工作区移动，实例保留。文件标签不带此值（§18.1 H5）。 */
   appScoped?: true;
   ownerTaskId?: string | null;
   workspaceKey?: string | null;
@@ -180,8 +177,15 @@ export interface WorkbenchPaneReport {
   draftModel?: ModelSelection;
 }
 
+export interface ExtensionAppViewBridge {
+  readonly hostContext: Readonly<Record<string, unknown>>;
+  callTool(name: string, args: unknown, signal: AbortSignal): Promise<Record<string, unknown>>;
+}
+
 export interface ExtensionViewPaneProps {
   tab: ExtensionViewSidePaneTab;
+  /** 由主区宿主提供，只允许 App 作用域视图使用。 */
+  appBridge?: ExtensionAppViewBridge;
   /** 标签页可见（侧栏展开且是当前标签）。 */
   visible: boolean;
   target: ExtensionViewTarget;

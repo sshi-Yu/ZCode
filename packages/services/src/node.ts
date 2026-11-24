@@ -1,3 +1,7 @@
+export {
+  createImageGenerationService,
+  type CreateImageGenerationServiceOptions,
+} from "./image-generation/node.js";
 import { ZCODE_PREINSTALLED_TOOLS_AVAILABLE_ENV } from "@zcode/shared/preinstalled-tools";
 import {
   createRemoteProjectService,

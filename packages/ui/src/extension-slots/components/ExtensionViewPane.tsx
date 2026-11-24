@@ -38,6 +38,7 @@ export function ExtensionViewPane({
   visible,
   target,
   onOpenExternal,
+  appBridge,
 }: ExtensionViewPaneProps) {
   const { intl, locale } = useZCodeIntl();
   const platform = usePlatform();
@@ -78,8 +79,9 @@ export function ExtensionViewPane({
   openExternalRef.current = onOpenExternal;
   const [page, setPage] = useState<ExtensionViewPage | null>(null);
 
-  useEffect(() => {
-    if (!viewsService || !sandbox || gen === null || !declared) return;
+  const allowMount = !appBridge || (appScoped && visible);
+  useLayoutEffect(() => {
+    if (!allowMount || !viewsService || !sandbox || gen === null || !declared) return;
     const created = createExtensionViewPage({
       service: viewsService,
       platform: sandbox,
@@ -87,6 +89,7 @@ export function ExtensionViewPane({
       scope: JSON.parse(scopeKey) as ResolvedScope,
       ...(inputKey ? { input: JSON.parse(inputKey) as ExtensionViewInput } : {}),
       locale: localeRef.current,
+      ...(appBridge ? { appBridge } : {}),
       openExternal: (url) => openExternalRef.current?.(url),
     });
     setPage(created);
@@ -94,7 +97,7 @@ export function ExtensionViewPane({
       setPage((current) => (current === created ? null : current));
       void created.dispose();
     };
-  }, [declared, gen, inputKey, sandbox, scopeKey, tab.viewId, viewsService]);
+  }, [allowMount, appBridge, declared, gen, inputKey, sandbox, scopeKey, tab.viewId, viewsService]);
 
   useEffect(() => {
     page?.setLocale(locale);

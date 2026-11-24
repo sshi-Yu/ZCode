@@ -292,6 +292,7 @@ export {
   IExtensionViewsService,
   type ExtensionsContributionsMessage,
 } from "./extensions/index.js";
+export { IImageGenerationService, type ImageGenerationJob } from "./image-generation/index.js";
 export { IVoiceInputService } from "./voice-input/index.js";
 export type { VoiceInputErrorCode, VoiceInputEvent } from "./voice-input/index.js";
 export { IMcpSyncService } from "./mcp-sync/mcpSync.js";

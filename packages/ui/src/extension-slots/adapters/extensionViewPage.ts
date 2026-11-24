@@ -29,6 +29,7 @@ import {
 } from "@/plugin-ui/hostPrimitives.js";
 import { PLUGIN_UI_SIDE_PANE_TITLE_BAR } from "@/plugin-ui/contract.js";
 import { logger } from "@/logger.js";
+import type { ExtensionAppViewBridge } from "@/extension-slots/contract.js";
 
 // 扩展视图页面（docs/plugins/extension-host.md §8）：复用 MCP App 的页面层（沙箱 webview、端口 transport、
 // 官方 AppBridge、hostContext 与卸载顺序），后端换成 IExtensionViewsService 的视图通道。
@@ -74,6 +75,7 @@ export function createExtensionViewPage(input: {
   /** file.viewer 打开文件时的打开对象（§16.5）。 */
   input?: ExtensionViewInput;
   locale: string;
+  appBridge?: ExtensionAppViewBridge;
   openExternal(url: string): void;
 }): ExtensionViewPage {
   const { service, platform } = input;
@@ -90,6 +92,8 @@ export function createExtensionViewPage(input: {
   let instanceId: string | null = null;
   let bridge: AppBridge | null = null;
   let attached = false;
+  let bridgeLifetime: AbortController | undefined;
+  const appBridge = input.scope.kind === "app" ? input.appBridge : undefined;
   let handshake: ReturnType<typeof setTimeout> | undefined;
   let stopNotifications: { dispose(): void } | null = null;
   /** 页面经 resources/subscribe 订阅的 uri：resources/updated 只投给这些。 */
@@ -111,10 +115,14 @@ export function createExtensionViewPage(input: {
   };
   const plane = createPluginUiPagePlane({
     onVisibility: () => undefined,
-    onCrash: () => fail(new Error("Extension view page stopped")),
+    onCrash: () => {
+      bridgeLifetime?.abort();
+      fail(new Error("Extension view page stopped"));
+    },
   });
-  const buildContext = (): McpUiHostContext =>
-    buildPluginUiHostContext({
+  const buildContext = (): McpUiHostContext => ({
+    ...appBridge?.hostContext,
+    ...buildPluginUiHostContext({
       theme: currentTheme(),
       locale,
       displayMode: "fullscreen",
@@ -122,7 +130,8 @@ export function createExtensionViewPage(input: {
       width: 0,
       titleBar: PLUGIN_UI_SIDE_PANE_TITLE_BAR,
       styleVariables: readPluginUiStyleVariables(),
-    });
+    }),
+  });
   const pushContext = () => {
     if (attached) bridge?.setHostContext(buildContext());
   };
@@ -142,9 +151,12 @@ export function createExtensionViewPage(input: {
     });
   };
 
-  const attach = (active: AppBridge) => {
-    active.onerror = fail;
+  const attach = (active: AppBridge, signal: AbortSignal) => {
+    active.onerror = (error) => {
+      if (!signal.aborted) fail(error);
+    };
     active.oninitialized = () => {
+      if (signal.aborted) return;
       clearTimeout(handshake);
       attached = true;
       logger.lifecycle.info("[extension-view] page initialized", {
@@ -154,7 +166,20 @@ export function createExtensionViewPage(input: {
       update({ phase: "running" });
       pushContext();
     };
-    active.oncalltool = async (params) => (await request("tools/call", params)) as CallToolResult;
+    active.oncalltool = async (params, extra) => {
+      if (!appBridge) return (await request("tools/call", params)) as CallToolResult;
+      // SDK 超时会取消原请求；不能让已失效的确认稍后仍触发计费提交。
+      const requestSignal = AbortSignal.any([signal, extra.mcpReq.signal]);
+      if (requestSignal.aborted || !attached || bridge !== active) {
+        throw new Error("Extension view was closed");
+      }
+      const structuredContent = await appBridge.callTool(
+        params.name,
+        params.arguments ?? {},
+        requestSignal,
+      );
+      return { content: [], structuredContent };
+    };
     active.onreadresource = async (params) =>
       (await request("resources/read", params)) as ReadResourceResult;
     active.onlistresources = async (params) =>
@@ -201,6 +226,9 @@ export function createExtensionViewPage(input: {
 
   const offPorts = platform.onPorts((event) => {
     if (disposed || event.sandboxId !== handle?.sandboxId || event.initId !== handle.initId) return;
+    bridgeLifetime?.abort();
+    const lifetime = new AbortController();
+    bridgeLifetime = lifetime;
     void bridge?.close();
     attached = false;
     logger.lifecycle.info("[extension-view] port attached", {
@@ -222,14 +250,14 @@ export function createExtensionViewPage(input: {
       { hostContext: buildContext() },
     );
     bridge = active;
-    attach(active);
+    attach(active, lifetime.signal);
     clearTimeout(handshake);
     // 超时只报告握手失败，不参与状态同步。
     handshake = setTimeout(
       () => fail(new Error("Extension view handshake timed out")),
       MCP_APPS_HANDSHAKE_TIMEOUT_MS,
     );
-    void active.connect(createPluginUiMessagePortTransport(event.port)).catch(fail);
+    void active.connect(createPluginUiMessagePortTransport(event.port)).catch(active.onerror);
   });
 
   const preparation = (async () => {
@@ -287,6 +315,7 @@ export function createExtensionViewPage(input: {
     async dispose() {
       if (disposed) return;
       disposed = true;
+      bridgeLifetime?.abort();
       clearTimeout(handshake);
       offPorts();
       themes.disconnect();

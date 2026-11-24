@@ -39,7 +39,11 @@ export function useWorkspaceMainViewSettingsExit({
         return;
       }
 
-      if (workspaceMainView === settingsEntryMainViewRef.current) {
+      // 生图设置只覆盖主区；返回后由同一本机 owner 恢复画布，不转入聊天导航。
+      if (
+        workspaceMainView === settingsEntryMainViewRef.current &&
+        workspaceMainView !== "genimage"
+      ) {
         // Settings 只是覆盖 workspace，底层 App 不卸载，进入前的
         // automations 主视图会一直保留。设置层退出时统一回到对话，
         // 让 Back、插件提示词、创建 Skill 和设置页快捷键共享同一导航语义。

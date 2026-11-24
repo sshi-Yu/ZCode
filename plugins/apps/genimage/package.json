@@ -2,7 +2,7 @@
   "name": "@zcode-plugins/genimage",
   "version": "0.1.1",
   "private": true,
-  "description": "No-cost GenImage canvas MCP App: React fullscreen canvas served over a stdio MCP resource; no provider, billing, or persistence.",
+  "description": "GenImage app workspace using protected host tools, alongside an offline MCP session canvas preview.",
   "type": "module",
   "main": "./dist/server.mjs",
   "scripts": {
@@ -11,7 +11,8 @@
     "build:runtime": "node scripts/build-runtime.mjs",
     "typecheck": "tsc -p tsconfig.browser.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "test": "node scripts/build-market.mjs && node --test test/mcp-smoke.test.mjs",
-    "test:browser": "node scripts/build-runtime.mjs && node scripts/browser-smoke.mjs"
+    "test:browser": "node scripts/build-runtime.mjs && node scripts/browser-smoke.mjs && node scripts/browser-app-smoke.mjs",
+    "test:browser:app": "node scripts/build-runtime.mjs && node scripts/browser-app-smoke.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "catalog:",

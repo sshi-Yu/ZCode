@@ -22,6 +22,8 @@ export interface ConfirmDialogRequest {
     | "update-confirmation";
   confirmLabel?: string;
   confirmDisabled?: boolean;
+  /** 确认按钮必须显式激活；Enter 保留当前控件的原生语义。 */
+  explicitConfirm?: boolean;
   /** 弹窗挂载后开始只读检查；更新仅属于本次请求，关闭即取消。 */
   prepare?: (context: {
     signal: AbortSignal;

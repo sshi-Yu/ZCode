@@ -21,6 +21,7 @@ import { join } from "node:path";
  */
 import { createHostDatabaseStartup } from "./database-startup/hostDatabaseStartup.js";
 import { createHostNetworkCapture } from "./hostNetworkCapture.js";
+import { createWindowHostImageGenerationService } from "./imageGenerationService.js";
 import { randomUUID } from "node:crypto";
 import { createPluginSandboxRegistrationBridge } from "./pluginSandbox/index.js";
 import { createWindowTopicResourceRelay } from "./windowTopicResourceRelay.js";
@@ -65,6 +66,7 @@ import {
   IExtensionsService,
   IExtensionViewsService,
   IExtensionGrantsService,
+  IImageGenerationService,
   IPluginManagementService,
   IWindowControllerService,
   IConversationShareService,
@@ -1423,6 +1425,8 @@ const pendingStartupAttachments = new Map<string, () => void>();
 let activeServices: ServiceCollection | null = null;
 // 扩展门面（docs/plugins/extension-host.md）：InitLocal 建立服务后创建，Host 退出时断开扩展进程端口。
 let windowHostExtensions: WindowHostExtensions | null = null;
+// 生图仅有本机桌面发布点，不放入自动暴露的通用 ServiceCollection。
+let windowHostImageGenerationService: IImageGenerationService | undefined;
 /**
  * Main 推送的实时界面语言，供 ZCode endpoint 请求的 X-Client-Language。
  * 过去 Host 用进程 Intl locale（Dock 启动无 LANG 会回退 en-US）；setting.json 写入可能滞后或失败，
@@ -2475,6 +2479,7 @@ function exposeServicesOnMessagePort(
     clientMode,
     attachmentScope,
     windowServices: activeServices ?? undefined,
+    imageGenerationService: windowHostImageGenerationService,
     ...(isWebRemoteAttachment
       ? { decorateWindowProjectService: webRemoteProjectTreeActivity.decorate }
       : {}),
@@ -2611,6 +2616,7 @@ async function disposeHostResources(reason: string): Promise<HostShutdownResult>
     pluginSandboxRegistrationBridge.dispose();
     windowHostExtensions?.dispose();
     windowHostExtensions = null;
+    windowHostImageGenerationService = undefined;
     stopHostNetworkTelemetry();
     hostNetworkCapture.setCaptureId(null);
     hostSelfResourceTelemetry.stop();
@@ -2703,6 +2709,7 @@ function disposeHostResourcesBestEffort(reason: string): void {
   pluginSandboxRegistrationBridge.dispose();
   windowHostExtensions?.dispose();
   windowHostExtensions = null;
+  windowHostImageGenerationService = undefined;
   stopHostNetworkTelemetry();
   hostNetworkCapture.setCaptureId(null);
   disposeLocalResourceTelemetry();
@@ -4032,6 +4039,10 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
           // 授权记录与审计（§17.7、§17.8）：~/.zcode/v2/extensions，只由扩展门面读写。
           dataDir: join(getAppConfigDir(), "extensions"),
           postToMain: (message) => parentPort.postMessage(message),
+        });
+        windowHostImageGenerationService = createWindowHostImageGenerationService({
+          credentialService: services.get(ICredentialService),
+          networkTransport: hostApiNetworkTransport,
         });
         services.register(IExtensionsService, windowHostExtensions.service);
         services.register(IExtensionViewsService, windowHostExtensions.viewsService);

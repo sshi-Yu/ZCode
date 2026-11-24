@@ -30,6 +30,7 @@ import {
   testId,
 } from "@zcode/shared/test-ids";
 import { Button } from "@/components/ui/button.js";
+import { Input } from "@/components/ui/input.js";
 import { toast } from "@/components/ui/toast.js";
 import { DesktopWindowFrame } from "@/DesktopWindowFrame.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -297,6 +298,112 @@ function SettingsSidebarButton({
         </span>
       </button>
     </ControlHintTooltip>
+  );
+}
+
+function GenImageModelSettings({
+  service,
+}: {
+  service: NonNullable<ReturnType<typeof useServices>["imageGenerationService"]>;
+}) {
+  const { intl } = useZCodeIntl();
+  const [configured, setConfigured] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    let active = true;
+    void service.getSettings().then(
+      (settings) => {
+        if (active) setConfigured(settings.configured);
+      },
+      () => {
+        if (active) setError(true);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [service]);
+
+  async function save(apiKey: string) {
+    if (busy) return;
+    setBusy(true);
+    setError(false);
+    try {
+      await service.saveSettings({ apiKey });
+      if (inputRef.current) inputRef.current.value = "";
+      setConfigured((await service.getSettings()).configured);
+    } catch {
+      setError(true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section
+      className="mb-6 space-y-3 rounded-xl border border-border bg-card p-4 sm:p-5"
+      aria-labelledby="genimage-settings-title"
+    >
+      <h2 id="genimage-settings-title" className="text-ui-base font-semibold">
+        {intl.formatMessage({ id: "genimage.modelSettings" })}
+      </h2>
+      <p className="text-ui-sm text-foreground-subtle">OpenAI Images · gpt-image-1</p>
+      <p role="status" className="text-ui-sm text-foreground-subtle">
+        {intl.formatMessage({
+          id:
+            configured === null && !error
+              ? "common.loading"
+              : configured
+                ? "genimage.settings.configured"
+                : "genimage.settings.unconfigured",
+        })}
+      </p>
+      <form
+        className="space-y-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const apiKey = inputRef.current?.value.trim();
+          if (apiKey) void save(apiKey);
+        }}
+      >
+        <label className="text-ui-sm" htmlFor="genimage-api-key">
+          {intl.formatMessage({ id: "genimage.settings.apiKey" })}
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            id="genimage-api-key"
+            data-testid="genimage-api-key"
+            ref={inputRef}
+            className="w-full sm:max-w-80"
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            maxLength={4096}
+            required
+            disabled={busy || (configured === null && !error)}
+          />
+          <Button
+            type="submit"
+            data-testid="genimage-save-settings"
+            disabled={busy || (configured === null && !error)}
+          >
+            {intl.formatMessage({ id: "common.save" })}
+          </Button>
+          {configured ? (
+            <Button type="button" variant="outline" disabled={busy} onClick={() => void save("")}>
+              {intl.formatMessage({ id: "genimage.settings.remove" })}
+            </Button>
+          ) : null}
+        </div>
+      </form>
+      {error ? (
+        <p role="alert" className="text-ui-sm text-destructive">
+          {intl.formatMessage({ id: "genimage.settings.error" })}
+        </p>
+      ) : null}
+    </section>
   );
 }
 
@@ -2073,6 +2180,11 @@ export function SettingsPage({
                           ) : activeSection === "modelProvider" ? (
                             <ServiceProvider services={localHostServices}>
                               {/* 模型配置属于本机全局事实源；激活远端 workspace 时也不能注入远端 Host。 */}
+                              {isDesktop && localHostServices.imageGenerationService ? (
+                                <GenImageModelSettings
+                                  service={localHostServices.imageGenerationService}
+                                />
+                              ) : null}
                               <ModelProviderSection
                                 workspacePath={activeWorkspacePath ?? captionWorkspacePath ?? ""}
                                 connectivityWorkspacePath={

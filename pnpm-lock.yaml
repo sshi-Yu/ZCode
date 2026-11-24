@@ -1121,6 +1121,9 @@ importers:
       electron-updater:
         specifier: 6.8.10
         version: 6.8.10
+      jimp:
+        specifier: ^1.6.1
+        version: 1.6.1
       module-details-from-path:
         specifier: ^1.0.4
         version: 1.0.4

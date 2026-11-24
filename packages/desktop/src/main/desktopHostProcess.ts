@@ -121,6 +121,8 @@ export interface SpawnHostProcessOptions {
   attachInitialServicePort?: boolean;
 }
 
+// Main 模块在一次应用运行内只初始化一次；所有窗口及重建的 Host 共享同一身份。
+const imageGenerationAppRunId = randomUUID();
 const exitedHostProcesses = new WeakSet<ElectronUtilityProcess>();
 const disposingHostProcesses = new Set<ElectronUtilityProcess>();
 
@@ -282,6 +284,14 @@ export function spawnHostProcess(
     env: {
       ...buildHostProcessEnv(dependencies.hostProcessLocalEnv),
       ...buildHostE2ECoverageEnv(),
+      ZCODE_IMAGE_GENERATION_APP_RUN_ID: imageGenerationAppRunId,
+      // 夹具只允许隔离 E2E 开发运行；覆盖继承值，生产包始终使用服务固定目的地。
+      ZCODE_E2E_GENIMAGE_ENDPOINT:
+        !app.isPackaged &&
+        process.env.ZCODE_E2E_RUN_ID?.trim() &&
+        process.env.ZCODE_E2E_HOME_DIR?.trim()
+          ? process.env.ZCODE_E2E_GENIMAGE_ENDPOINT?.trim() ?? ""
+          : "",
       ZCODE_PROCESS_LABEL: label,
       // macOS-only: the Computer Use Helper launcher runs inside this forked host utilityProcess, whose
       // code-signing identity is a nested Electron helper (NOT dev.zcode.app). Publish THIS (main

@@ -6,8 +6,8 @@ import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
 /**
- * 产物自产：esbuild 打包 Node stdio 服务（零运行时依赖，仅 Node 内建），
- * Vite + vite-plugin-singlefile 产出自包含画布 HTML。两者先写入临时目录，
+ * 产物自产：esbuild 打包 Node stdio 服务与扩展入口（零运行时依赖，仅 Node 内建），
+ * Vite + vite-plugin-singlefile 产出自包含画布 HTML。全部先写入临时目录，
  * 校验通过后才进入目标目录；失败不发布半成品。
  *
  * `buildRuntime(targetDir)` 供市场发布回调复用（目标即临时插件根下的 dist/）。
@@ -17,11 +17,11 @@ const appRoot = fileURLToPath(new URL("../", import.meta.url));
 const NODE_BUILTINS = new Set(builtinModules.flatMap((name) => [name, `node:${name}`]));
 
 async function bundleServer(targetDir) {
-  const outfile = path.join(targetDir, "server.mjs");
   const result = await build({
     absWorkingDir: appRoot,
-    entryPoints: [path.join(appRoot, "src/node/server.ts")],
-    outfile,
+    entryPoints: { server: path.join(appRoot, "src/node/server.ts"), extension: path.join(appRoot, "src/node/extension.ts") },
+    outdir: targetDir,
+    outExtension: { ".js": ".mjs" },
     bundle: true,
     platform: "node",
     format: "esm",
@@ -72,7 +72,7 @@ export async function buildRuntime(targetDir) {
     await bundleServer(staging);
     await bundleCanvas(staging);
     const files = (await readdir(staging)).sort();
-    if (files.join(",") !== "canvas.html,server.mjs") {
+    if (files.join(",") !== "canvas.html,extension.mjs,server.mjs") {
       throw new Error(`runtime staging is incomplete: ${files.join(", ")}`);
     }
     await mkdir(targetDir, { recursive: true });
@@ -85,7 +85,7 @@ export async function buildRuntime(targetDir) {
   }
 }
 
-// 直接运行时：只替换本包 dist 下的两个运行时文件，保留 dist/market 等其他产物。
+// 直接运行时：只替换本包 dist 下的运行时文件，保留 dist/market 等其他产物。
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const files = await buildRuntime(path.join(appRoot, "dist"));
   console.log(`GenImage runtime built: ${files.map((file) => `dist/${file}`).join(" + ")} (self-contained, no runtime deps).`);

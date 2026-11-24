@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { copyFile, mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { test } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -15,6 +15,7 @@ import { CallToolResultSchema, ErrorCode, McpError } from "@modelcontextprotocol
 
 const appRoot = fileURLToPath(new URL("../", import.meta.url));
 const resourceUri = "ui://genimage/canvas.html";
+const marketRoot = process.env.GENIMAGE_MARKET_DIR ? path.resolve(process.env.GENIMAGE_MARKET_DIR) : path.join(appRoot, "dist/market");
 const mimeType = "text/html;profile=mcp-app";
 
 async function expectInvalid(operation) {
@@ -164,7 +165,7 @@ await test("a missing installed canvas is a bounded protocol error without leaki
 });
 
 await test("published market snapshot carries manifest, listing, and runtime files", async () => {
-  const market = path.join(appRoot, "dist/market");
+  const market = marketRoot;
   const manifestText = await readFile(path.join(market, "marketplace.json"), "utf8");
   const manifest = JSON.parse(manifestText);
   assert.equal(manifest.name, "genimage-local");
@@ -177,6 +178,8 @@ await test("published market snapshot carries manifest, listing, and runtime fil
   assert.equal(plugin.version, entry.version);
   assert.equal(plugin.mcpServers.genimage.command, "node");
   assert.equal(plugin.mcpServers.genimage.args[0], "${ZCODE_PLUGIN_ROOT}/dist/server.mjs");
+  // 先验证安装内容，避免旧市场 HTML 与新 runtime 不同掩盖缺失的扩展入口。
+  assert.deepEqual((await readdir(path.join(market, "genimage/dist"))).sort(), ["canvas.html", "extension.mjs", "server.mjs"]);
   const html = await readFile(path.join(appRoot, "dist/canvas.html"), "utf8");
   const workspace = await mkdtemp(path.join(tmpdir(), "genimage-market-run-"));
   try {
@@ -188,7 +191,25 @@ await test("published market snapshot carries manifest, listing, and runtime fil
   const runtimeFiles = (await readdir(path.join(market, "genimage"))).sort();
   assert.deepEqual(runtimeFiles, [".zcode-plugin", "dist"]);
   const distFiles = (await readdir(path.join(market, "genimage/dist"))).sort();
-  assert.deepEqual(distFiles, ["canvas.html", "server.mjs"]);
+  assert.deepEqual(distFiles, ["canvas.html", "extension.mjs", "server.mjs"]);
+});
+
+await test("app workspace is declared and activates from the installed snapshot without source dependencies", async () => {
+  const source = JSON.parse(await readFile(path.join(appRoot, "manifest/plugin.json"), "utf8"));
+  assert.equal(source.extension?.main, "./dist/extension.mjs", "App view entry is missing from manifest");
+  assert.deepEqual(source.extension.contributes.views, [{
+    id: "workspace", title: { en: "GenImage", "zh-CN": "GenImage 生图画布" }, icon: "image", scope: "app",
+  }]);
+  const pluginDir = path.join(marketRoot, "genimage");
+  const installed = JSON.parse(await readFile(path.join(pluginDir, ".zcode-plugin/plugin.json"), "utf8"));
+  assert.deepEqual(installed, source);
+  const { activate } = await import(pathToFileURL(path.join(pluginDir, "dist/extension.mjs")).href);
+  const registered = [];
+  activate({ views: { register: (id, definition) => registered.push({ id, definition }) } });
+  assert.equal(registered.length, 1);
+  assert.equal(registered[0].id, "workspace");
+  assert.deepEqual(registered[0].definition, { entry: "./dist/canvas.html" });
+  assert.ok((await readFile(path.join(pluginDir, "dist/extension.mjs"), "utf8")).includes("activate"));
 });
 
 await test("server bundle stays offline: no network, provider, or generation surface", async () => {

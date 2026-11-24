@@ -1,24 +1,32 @@
-import { copyFile, mkdir } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, rename, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildRuntime } from "./build-runtime.mjs";
 import { publishMarket } from "../../../scripts/package-market.mjs";
 
-/**
- * 市场交付：manifest/plugin.json + manifest/marketplace.json 由 publishMarket 校验并复制，
- * 回调只在临时插件根下自建 dist/server.mjs 与 dist/canvas.html；验证通过后原子发布 dist/market。
- */
-
+// 默认遵循仓库市场发布器；--out-dir 给桌面验收新路径，避免覆盖仍被 Electron 使用的旧目录。
 const appRoot = fileURLToPath(new URL("../", import.meta.url));
-
-const market = await publishMarket({
-  appRoot,
-  build: (pluginDir) => buildRuntime(path.join(pluginDir, "dist")),
-});
-// 同一份验证过的运行时也放在 app/dist，供本地 stdio / browser 验收使用，不再重复构建。
-await mkdir(path.join(appRoot, "dist"), { recursive: true });
-for (const file of ["server.mjs", "canvas.html"]) {
-  await copyFile(path.join(market, "genimage/dist", file), path.join(appRoot, "dist", file));
+const args = process.argv.slice(2);
+if (args.length && (args.length !== 2 || args[0] !== "--out-dir")) throw new Error("Usage: build-market.mjs [--out-dir <new market directory>]");
+const isolatedTarget = args.length ? path.resolve(args[1]) : process.env.GENIMAGE_MARKET_DIR ? path.resolve(process.env.GENIMAGE_MARKET_DIR) : null;
+let staging;
+try {
+  const buildRoot = isolatedTarget ? await (async () => {
+    await mkdir(path.dirname(isolatedTarget), { recursive: true });
+    staging = await mkdtemp(path.join(tmpdir(), "genimage-market-"));
+    await mkdir(path.join(staging, "manifest"));
+    for (const file of ["plugin.json", "marketplace.json"]) await copyFile(path.join(appRoot, "manifest", file), path.join(staging, "manifest", file));
+    return staging;
+  })() : appRoot;
+  const prepared = await publishMarket({ appRoot: buildRoot, build: pluginDir => buildRuntime(path.join(pluginDir, "dist")) });
+  const market = isolatedTarget ?? prepared;
+  if (isolatedTarget) await rename(prepared, isolatedTarget);
+  await mkdir(path.join(appRoot, "dist"), { recursive: true });
+  for (const file of ["server.mjs", "extension.mjs", "canvas.html"]) {
+    await copyFile(path.join(market, "genimage/dist", file), path.join(appRoot, "dist", file));
+  }
+  console.log(`GenImage market published: ${market} (genimage@genimage-local 0.1.1).`);
+} finally {
+  if (staging) await rm(staging, { recursive: true, force: true });
 }
-
-console.log(`GenImage market published: ${path.relative(appRoot, market)} (genimage@genimage-local 0.1.1).`);

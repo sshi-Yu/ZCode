@@ -124,4 +124,15 @@ kbd { font-family: ui-monospace, Consolas, monospace; font-size: var(--text-ui-s
   .session-state .host-label, .canvas-help { display: none; }
   .field textarea, .field input { font-size: var(--text-mobile-input-safe, 16px); }
 }
+.app-state { top: 148px; left: var(--gi-space-6); width: 288px; max-width: calc(100vw - 48px); max-height: calc(100dvh - 260px); overflow: auto; padding: var(--gi-space-3); z-index: 3; }
+.app-state > * + * { margin-top: var(--gi-space-2); }
+[data-genimage-mode="app"] .node-art { object-fit: contain; }
+[data-genimage-mode="app"] .node-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-genimage-mode="app"] .history-row > img { width: 52px; height: 40px; object-fit: contain; flex: none; border-radius: var(--radius-md); }
+[data-genimage-mode="app"] .history-copy { overflow-wrap: anywhere; }
+[data-genimage-mode="app"] .detail-art { max-height: 320px; object-fit: contain; }
+@media (max-width: 639px) {
+  [data-genimage-mode="app"] .top-actions button { width: auto; }
+  .app-state { left: var(--gi-space-3); max-width: calc(100vw - 24px); }
+}
 @media (prefers-reduced-motion: reduce) { .canvas-app *, .canvas-app *::before, .canvas-app *::after { animation: none !important; transition: none !important; } }

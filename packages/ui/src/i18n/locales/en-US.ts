@@ -2942,6 +2942,21 @@ const enUS: Record<string, string> = {
   "workspace.openWorkspace": "Open workspace",
   "workspace.openFolder": "Open folder",
   "workspace.openPluginsSettings": "Plugin Marketplace",
+  "genimage.title": "Image generation",
+  "genimage.modelSettings": "Image generation models",
+  "genimage.confirm.title": "Generate one image?",
+  "genimage.confirm.description":
+    "Model: {model}\n\nPrompt:\n{prompt}\n\nThis request may incur charges from the provider.",
+  "genimage.confirm.submit": "Generate image",
+  "genimage.export.failed": "Could not save the original image.",
+  "genimage.plugin.activate": "Activate GenImage in the Plugin Marketplace to open the workspace.",
+  "genimage.plugin.unavailable":
+    "Install or enable GenImage in the Plugin Marketplace to open the workspace.",
+  "genimage.settings.configured": "API key configured",
+  "genimage.settings.unconfigured": "API key not configured",
+  "genimage.settings.apiKey": "OpenAI API key",
+  "genimage.settings.remove": "Remove key",
+  "genimage.settings.error": "Could not load or update the image generation key.",
   "workspace.backToWorkspace": "Back to workspace",
   "workspace.wslUncPrompt.title": "Open this through WSL remote connection?",
   "workspace.wslUncPrompt.description":

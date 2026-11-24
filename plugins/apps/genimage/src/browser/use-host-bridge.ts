@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { App } from "@modelcontextprotocol/ext-apps";
 import type { HostStatus } from "./types.js";
 import type { HostThemeStore } from "@zcode-plugins/uis";
@@ -14,9 +14,14 @@ export interface UseHostBridgeOptions {
  * 宿主为外观唯一权威；桥接仅转交官方 hostContext 给 uis store，不自行解析样式。
  * 处理器先于 connect 注册，避免宿主在 initialized 后立即重放 tool-result 时丢 brief。
  * App 只声明 fullscreen，autoResize:false，避免全视口画布反向驱动宿主 inline 高度。
- * teardown 回复前清理本页订阅/计时器，不改变任何已受理任务（本轮无后端任务）。
+ * teardown 先停止桥接通知并将页面切为 unavailable；订阅/计时器由页面卸载后的 effect cleanup 清理，
+ * 不依赖 CanvasPage 的空回调，也不保证清理早于 teardown 回复；宿主已受理任务保持不变。
  */
-export function useHostBridge({ themeStore, onBrief, onStatus, onTeardown }: UseHostBridgeOptions): void {
+export type PageMode = "pending" | "legacy" | "app" | "unavailable";
+export interface PageBridge { app: App | null; mode: PageMode; status: HostStatus; brief: { value: unknown; isError: unknown } | null }
+
+export function useHostBridge({ themeStore, onBrief, onStatus, onTeardown }: UseHostBridgeOptions): PageBridge {
+  const [bridge, setBridge] = useState<PageBridge>(() => ({ app: null, mode: window.parent === window ? "legacy" : "pending", status: "standalone", brief: null }));
   // 回调总是读最新已提交值，连接只由稳定的主题 store 生命周期持有，避免主题更新重建画布。
   const handlers = useRef({ onBrief, onStatus, onTeardown });
   useEffect(() => {
@@ -44,10 +49,12 @@ export function useHostBridge({ themeStore, onBrief, onStatus, onTeardown }: Use
       const structuredContent: unknown = result.structuredContent;
       const brief = structuredContent && typeof structuredContent === "object" && "brief" in structuredContent
         ? structuredContent.brief : undefined;
+      setBridge((previous) => ({ ...previous, brief: { value: brief, isError: result.isError } }));
       handlers.current.onBrief(brief, result.isError);
     };
     app.onteardown = async () => {
       disposed = true;
+      setBridge((previous) => ({ ...previous, app: null, mode: "unavailable" }));
       handlers.current.onTeardown();
       return {};
     };
@@ -56,23 +63,36 @@ export function useHostBridge({ themeStore, onBrief, onStatus, onTeardown }: Use
       updateContext(app.getHostContext());
       handlers.current.onStatus("connected");
       const context = app.getHostContext();
+      // 只接受可信初始化上下文的显式标志；标题及后续外观通知都不能切换业务模式。
+      const mode = context && "zcodeGenImage" in context && context.zcodeGenImage === true ? "app" : "legacy";
+      setBridge((previous) => ({ ...previous, app, mode, status: "connected" }));
       if (
         context?.displayMode !== "fullscreen" &&
         (context?.availableDisplayModes === undefined || context.availableDisplayModes.includes("fullscreen"))
       ) {
         try {
           const result = await app.requestDisplayMode({ mode: "fullscreen" });
-          if (!disposed && result.mode !== "fullscreen") handlers.current.onStatus("fullscreen-denied");
+          if (!disposed && result.mode !== "fullscreen") {
+            handlers.current.onStatus("fullscreen-denied");
+            setBridge((previous) => ({ ...previous, status: "fullscreen-denied" }));
+          }
         } catch {
-          if (!disposed) handlers.current.onStatus("fullscreen-denied");
+          if (!disposed) {
+            handlers.current.onStatus("fullscreen-denied");
+            setBridge((previous) => ({ ...previous, status: "fullscreen-denied" }));
+          }
         }
       }
     }).catch(() => {
-      if (!disposed) handlers.current.onStatus("handshake-failed");
+      if (!disposed) {
+        handlers.current.onStatus("handshake-failed");
+        setBridge((previous) => ({ ...previous, mode: "unavailable", status: "handshake-failed" }));
+      }
     });
     return () => {
       disposed = true;
       void app.close();
     };
   }, [themeStore]);
+  return bridge;
 }
