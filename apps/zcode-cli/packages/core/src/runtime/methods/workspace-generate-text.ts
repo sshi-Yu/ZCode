@@ -31,6 +31,7 @@ const GIT_COMMIT_MESSAGE_QUERY_SOURCE = "git_commit_message";
 
 export interface WorkspaceGenerateTextInput {
   selection: ModelSelection;
+  expectedModelFingerprint?: string;
   prompt?: string;
   messages?: ModelInputMessage[];
   tools?: ModelToolContract[];
@@ -148,7 +149,9 @@ async function generateWorkspaceTextImpl(
   assertWorkspaceModelInput(input);
   const requestedSelection = input.selection;
   const querySource = input.querySource.trim() || "workspace_generate_text";
-  const baseModel = createRuntimeModel(this, { selection: requestedSelection, scope: "workspace" });
+  const baseModel = createRuntimeModel(this, { selection: requestedSelection, scope: "workspace",
+    ...(input.expectedModelFingerprint ? { expectedModelFingerprint: input.expectedModelFingerprint } : {}),
+  });
   // 辅助请求需要的是最低公开档位，不是扫描 off/nothink 等名称后强制关闭。
   // 输入预测按键触发、要求低延迟，同样走最低档位。
   const model =

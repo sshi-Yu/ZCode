@@ -396,6 +396,7 @@ export interface ZCodeAgentSetModeParams extends ZCodeAgentSessionTarget {
 
 export interface ZCodeAgentGenerateWorkspaceTextParams extends ZCodeAgentWorkspaceTarget {
   selection: ZCodeWorkspaceGenerateTextParams["selection"];
+  expectedModelFingerprint?: string;
   prompt?: string;
   messages?: ZCodeWorkspaceGenerateTextParams["messages"];
   tools?: ZCodeWorkspaceGenerateTextParams["tools"];

@@ -8,6 +8,7 @@ import {
   type ProviderModel,
   type ProviderRegistryView,
 } from "@zcode/provider";
+import { createModelExecutionFingerprint } from "@zcode/provider-node";
 import { createRegistrySelectionProtocolError } from "./provider-registry-selection.js";
 
 export type RuntimeModelFactory = NonNullable<AgentRuntimeDeps["modelFactory"]>;
@@ -43,13 +44,23 @@ export class ApiProviderModelRuntime {
   readonly modelFactory: RuntimeModelFactory = (target): Model => {
     if (!this.#started) throw new Error("ApiProviderModelRuntime 必须先 start() 再创建 Model");
     const validation = this.#registry.validateSelection(target.selection);
-    if (!validation.ok) throw createRegistrySelectionProtocolError(validation);
+    if (!validation.ok) {
+      if (target.expectedModelFingerprint) {
+        throw Object.assign(new Error("tool-model.reconfirm-required"), { code: "tool-model.reconfirm-required" });
+      }
+      throw createRegistrySelectionProtocolError(validation);
+    }
     const providerId = target.selection.providerId;
     const modelId = target.selection.modelId;
     const provider = this.#registry.getProvider(providerId);
     if (!provider) throw new Error("Registry Selection 校验与 Provider 索引结果不一致");
     const registryModel = this.#registry.getModel(providerId, modelId);
     if (!registryModel) throw new Error("Registry Selection 校验与 Model 索引结果不一致");
+    // 确认后只传 Selection 会在 CLI 重读到新接入方；同次查找核对后直接冻结该实例。
+    if (target.expectedModelFingerprint &&
+      createModelExecutionFingerprint(provider, registryModel) !== target.expectedModelFingerprint) {
+      throw Object.assign(new Error("tool-model.reconfirm-required"), { code: "tool-model.reconfirm-required" });
+    }
     return this.#createRegistryModel(provider, registryModel, target);
   };
 

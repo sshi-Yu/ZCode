@@ -478,6 +478,8 @@ export interface AgentRuntimeDeps {
 
 export interface RuntimeModelFactoryInput {
   selection: ModelSelection;
+  /** 本机工具确认的正式配置摘要，只约束本次创建，不进入会话配置。 */
+  expectedModelFingerprint?: string;
   /** 只绑定到本次创建的 Model，不进入公共 ModelRequest 或 Session 持久化。 */
   requestDependencies?: ModelRequestDependencies;
 }

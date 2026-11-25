@@ -6163,6 +6163,9 @@ export function createZCodeAgentService(
           {
             workspace: buildWorkspaceRef(params),
             selection: params.selection,
+            ...(params.expectedModelFingerprint
+              ? { expectedModelFingerprint: params.expectedModelFingerprint }
+              : {}),
             ...(params.prompt ? { prompt: params.prompt } : {}),
             ...(params.messages ? { messages: params.messages } : {}),
             ...(params.tools ? { tools: params.tools } : {}),

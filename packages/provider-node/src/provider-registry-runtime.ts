@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import type { Provider, ProviderModel } from "@zcode/provider";
 import {
   ProviderRegistryService,
   MutableAccountProviderConfigSource,
@@ -9,6 +11,34 @@ import {
   NodeProviderConfigRuntime,
   type NodeProviderConfigRuntimeOptions,
 } from "./provider-config-runtime.js";
+
+/** Host 与 CLI 对同一正式接入配置计算不可逆摘要；不向 UI 返回配置或凭据。 */
+export function createModelExecutionFingerprint(provider: Provider, model: ProviderModel): string {
+  const canonical = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(canonical);
+    if (value && typeof value === "object") {
+      return Object.fromEntries(
+        Object.entries(value)
+          .filter(([, entry]) => entry !== undefined)
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([key, entry]) => [key, canonical(entry)]),
+      );
+    }
+    return value;
+  };
+  return createHash("sha256")
+    .update(
+      JSON.stringify(
+        canonical({
+          providerId: provider.providerId,
+          modelId: model.modelId,
+          provider: provider.config.toJSON(),
+          model: model.config.toJSON(),
+        }),
+      ),
+    )
+    .digest("hex");
+}
 
 export interface NodeProviderRegistryRuntimeOptions extends NodeProviderConfigRuntimeOptions {
   readonly accountSource?: ProviderSource<AccountProviderConfigSnapshot>;

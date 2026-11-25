@@ -686,14 +686,9 @@ user turn
   -> 下一轮继续
 ```
 
-`workspace/generateText` 是受控短文本 sidecar：调用方只提供单条 user prompt，
-不开放 tools。Git commit message 生成固定使用 `querySource = "git_commit_message"`；
-这类请求输出预算很小，runtime 在调用 `modelAdapter.generateText` 前必须关闭
-reasoning/thinking provider options，避免用户当前会话的高推理档位把全部
-`max_tokens` 消耗在 thinking token 上，导致返回空文本。关闭转换必须同时消费
-`modelRef` 与原始 provider options：已有 `thinking`/`enable_thinking` 使用对应直接
-开关，GLM-5.2 等明确支持 `none` 的 effort-only 模型写入 canonical
-`reasoningEffort=none`；不得只删除 effort，也不得重新合成 `extra_body`。
+`workspace/generateText` 是正式工作区文本入口，支持 prompt 或结构化消息和可选工具合同。Git commit message 固定使用 `querySource = "git_commit_message"`，沿用最低公开 reasoning 档位和正式 streamText 聚合，不改变会话选型。
+
+本机桌面工具覆盖（2026-11-25）：内部请求可携带 `expectedModelFingerprint`（64 位小写 SHA-256）。Host 准备确认时冻结正式 Provider/Model 完整配置的规范化摘要；CLI 将摘要原样交给 ModelFactory，在同一次 Registry 查找后、创建 Model 前比对。匹配才创建基于该次 Provider/Model 配置的冻结实例；不匹配抛 `tool-model.reconfirm-required`，adapter 创建次数与上游请求数均为零。无该字段的原 Git、普通 CLI、Web/手机与远端请求保持原规则。摘要不作为授权凭据，不允许跳过 Registry 的 Selection 校验；原始密钥/配置不进入确认回执或日志。见 [工具模型设置规格](../../../../../../../docs/ui/tool-model-settings.md)。
 
 关键事件：
 

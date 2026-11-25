@@ -2610,6 +2610,10 @@ export const zcodeWorkspaceGenerateTextParamsSchema = z
   .object({
     workspace: zcodeWorkspaceRefSchema,
     selection: modelSelectionSchema,
+    expectedModelFingerprint: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
     prompt: nonEmptyString.optional(),
     messages: z.array(zcodeWorkspaceModelMessageSchema).min(1).optional(),
     tools: z.array(zcodeWorkspaceModelToolSchema).optional(),

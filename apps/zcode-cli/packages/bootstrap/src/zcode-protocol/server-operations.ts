@@ -3200,6 +3200,7 @@ export async function generateWorkspaceText(
   );
   const input = {
     selection: params.selection,
+    ...(params.expectedModelFingerprint ? { expectedModelFingerprint: params.expectedModelFingerprint } : {}),
     ...(params.prompt ? { prompt: params.prompt } : {}),
     ...(params.messages ? { messages: params.messages } : {}),
     ...(params.tools

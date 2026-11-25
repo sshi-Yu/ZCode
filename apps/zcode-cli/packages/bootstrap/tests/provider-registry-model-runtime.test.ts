@@ -11,6 +11,7 @@ import {
   type Provider,
 } from "@zcode/provider";
 import { describe, expect, it, vi } from "vitest";
+import { createModelExecutionFingerprint } from "@zcode/provider-node";
 import { ApiProviderModelRuntime } from "../src/app/provider-registry-model-runtime.js";
 import {
   createAccountProviderConfig,
@@ -104,6 +105,22 @@ function captureRuntime(registry: ProviderRegistry) {
 }
 
 describe("ApiProviderModelRuntime", () => {
+  it("确认指纹不匹配时不创建 Model，正确指纹使用同次 Registry 事实", () => {
+    const first = provider();
+    const registry = new ProviderRegistry([first]);
+    const { created, runtime } = captureRuntime(registry);
+    const expectedModelFingerprint = createModelExecutionFingerprint(first, first.models[0]!);
+    runtime.modelFactory({ selection: selection(), expectedModelFingerprint });
+    expect(created).toHaveLength(1);
+    registry.replace([provider("api-provider", createApiKeyProviderConfig({
+      apiFormat: "openai-responses", apiKey: "changed-key", baseURL: "https://changed.example.com", models: ["model-a"],
+    }))], "receiver changed");
+    expect(() => runtime.modelFactory({ selection: selection(), expectedModelFingerprint }))
+      .toThrow("tool-model.reconfirm-required");
+    expect(created).toHaveLength(1);
+    expect(created[0]?.providerConfig).toBe(first.config);
+  });
+
   it("把 Registry 的完整 Provider / Model Config 原样交给 Adapter", () => {
     const registry = new ProviderRegistry([provider()]);
     const { created, expected, runtime } = captureRuntime(registry);
