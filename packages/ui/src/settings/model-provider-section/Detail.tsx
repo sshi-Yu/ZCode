@@ -642,7 +642,7 @@ export function ModelProviderSectionDetail({
     return null;
   }
 
-  if (!selectedNavItem.provider) {
+  if (!("provider" in selectedNavItem) || !selectedNavItem.provider) {
     return <ModelProviderLoadingCard loadingLabel={loadingLabel} />;
   }
 

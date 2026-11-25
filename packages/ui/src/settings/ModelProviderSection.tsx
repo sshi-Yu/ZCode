@@ -30,6 +30,8 @@ import { useConfirmDialog } from "@/hooks/useConfirmDialog.js";
 import { useModelProviders } from "@/hooks/useModelProviders.js";
 import { resolveEntitledAccountProviderAccess } from "@/lib/accountProviderAccess.js";
 import { usePlatform } from "@/hooks/usePlatform.js";
+import { ImageGenerationSettings } from "@/image-generation/index.js";
+import { ToolModelDetails } from "@/settings/tool-model-details/index.js";
 import { useServices } from "@/hooks/useServices.js";
 import { useZCodeStore } from "@/store/StoreProvider.js";
 import { logger } from "@/logger.js";
@@ -63,11 +65,7 @@ import {
 import { sortModelProvidersForDisplay } from "@/lib/modelProviderOrdering.js";
 import { useSettings } from "@/hooks/useSettingService.js";
 import { resolveLogoutProviderFamilyDomain } from "@/lib/providerFamilyDomainSettings.js";
-import {
-  addPendingSettingsSectionListener,
-  consumePendingSettingsModelProviderTarget,
-  type SettingsModelProviderTarget,
-} from "@/lib/settingsNavigation.js";
+import type { SettingsModelProviderTarget } from "@/lib/settingsNavigation.js";
 import { useEnterpriseCodingPlanProducts } from "@/settings/model-provider-section/useEnterpriseCodingPlanProducts.js";
 
 export {
@@ -112,7 +110,8 @@ export function shouldRetryUnchangedCodingPlanProviderSync({
 function resolveCodingPlanIntentProviderId(
   target: SettingsModelProviderTarget | undefined,
 ): BuiltinModelProviderId | null {
-  switch (target?.providerId) {
+  if (!target || !("providerId" in target)) return null;
+  switch (target.providerId) {
     case BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan:
     case BUILTIN_MODEL_PROVIDER_IDS.zaiTeamCodingPlan:
     case BUILTIN_MODEL_PROVIDER_IDS.zaiStartPlan:
@@ -242,17 +241,56 @@ export function ModelProviderSection({
   connectivityWorkspaceRequired = false,
   pendingModelProviderTarget,
   onConsumePendingModelProviderTarget,
+  onDraftDirtyChange,
+  onLeaveDraft,
 }: {
   workspacePath?: string;
   connectivityWorkspacePath?: string;
   connectivityWorkspaceRequired?: boolean;
   pendingModelProviderTarget?: SettingsModelProviderTarget;
   onConsumePendingModelProviderTarget?: () => void;
-} = {}) {
+  onDraftDirtyChange: (dirty: boolean) => void;
+  onLeaveDraft: (proceed: () => void) => void;
+}) {
   const { intl, locale } = useZCodeIntl();
   const confirmDialog = useConfirmDialog();
   const platform = usePlatform();
-  const { oauthService } = useServices();
+  const { oauthService, imageGenerationService, toolModelSettingsService } = useServices();
+  const additionalGroups = useMemo<ModelProviderNavGroup[]>(
+    () => [
+      ...(imageGenerationService
+        ? [
+            {
+              id: "imageGeneration" as const,
+              title: intl.formatMessage({ id: "genimage.title" }),
+              items: [
+                {
+                  key: "image-generation",
+                  type: "imageGeneration" as const,
+                  label: locale === "zh-CN" ? "生图连接" : "Image connections",
+                },
+              ],
+            },
+          ]
+        : []),
+      ...(toolModelSettingsService
+        ? [
+            {
+              id: "toolModels" as const,
+              title: locale === "zh-CN" ? "小工具" : "Utilities",
+              items: [
+                {
+                  key: "tool-models",
+                  type: "toolModels" as const,
+                  label: locale === "zh-CN" ? "工具模型" : "Utility models",
+                },
+              ],
+            },
+          ]
+        : []),
+    ],
+    [imageGenerationService, intl, locale, toolModelSettingsService],
+  );
   const {
     modelProviders,
     providerTemplates,
@@ -294,14 +332,13 @@ export function ModelProviderSection({
     );
   }, [providerSettingsView]);
   const providerConnectionRefreshSignal = providerSettingsView?.revision;
-  const [initialModelProviderTarget] = useState(() => consumePendingSettingsModelProviderTarget());
-  const [invalidProviderTarget, setInvalidProviderTarget] = useState(() =>
-    Boolean(
-      initialModelProviderTarget && !resolveCodingPlanIntentProviderId(initialModelProviderTarget),
-    ),
-  );
+  const [invalidProviderTarget, setInvalidProviderTarget] = useState(false);
   const [selectedNodeKey, setSelectedNodeKey] = useState<string | null>(() => {
-    const providerId = resolveCodingPlanIntentProviderId(initialModelProviderTarget);
+    // 首次挂载时直接采用 SettingsPage 已消费的深链，避免默认导航的初始化 effect 覆盖它。
+    if (pendingModelProviderTarget && "imageGeneration" in pendingModelProviderTarget) {
+      return imageGenerationService ? "image-generation" : null;
+    }
+    const providerId = resolveCodingPlanIntentProviderId(pendingModelProviderTarget);
     return providerId ? resolveProviderFamilySideNodeKey(providerId) : null;
   });
   const [presetSubscriptionProviderId, setPresetSubscriptionProviderId] =
@@ -331,6 +368,14 @@ export function ModelProviderSection({
   const applyModelProviderTarget = useCallback(
     (target: SettingsModelProviderTarget | undefined) => {
       if (!target) return false;
+      if ("imageGeneration" in target) {
+        if (imageGenerationService) {
+          setSelectedNodeKey("image-generation");
+          setTemplatePickerOpen(false);
+          setInvalidProviderTarget(false);
+        }
+        return true;
+      }
       const providerId = resolveCodingPlanIntentProviderId(target);
       if (!providerId) {
         // 未知 ID 不能只静默忽略：pending 指令不消费的话，外部输入错误会困住导航。
@@ -346,34 +391,22 @@ export function ModelProviderSection({
       setSelectedNodeKey(resolveProviderFamilySideNodeKey(providerId));
       return true;
     },
-    [],
+    [imageGenerationService],
   );
 
   useEffect(() => {
-    if (!pendingModelProviderTarget) {
+    if (!pendingModelProviderTarget) return;
+    onConsumePendingModelProviderTarget?.();
+    if ("imageGeneration" in pendingModelProviderTarget && selectedNodeKey === "image-generation")
       return;
-    }
-    if (applyModelProviderTarget(pendingModelProviderTarget)) {
-      onConsumePendingModelProviderTarget?.();
-    }
-  }, [applyModelProviderTarget, onConsumePendingModelProviderTarget, pendingModelProviderTarget]);
-
-  useEffect(
-    () =>
-      addPendingSettingsSectionListener((section, detail) => {
-        if (section !== "modelProvider") {
-          return;
-        }
-        applyModelProviderTarget(
-          detail?.modelProviderId
-            ? {
-                providerId: detail.modelProviderId,
-              }
-            : undefined,
-        );
-      }),
-    [applyModelProviderTarget],
-  );
+    onLeaveDraft(() => applyModelProviderTarget(pendingModelProviderTarget));
+  }, [
+    applyModelProviderTarget,
+    onConsumePendingModelProviderTarget,
+    onLeaveDraft,
+    pendingModelProviderTarget,
+    selectedNodeKey,
+  ]);
   const [accountAvailability, setAccountAvailability] = useState<OAuthAccountAvailability | null>(
     null,
   );
@@ -666,6 +699,7 @@ export function ModelProviderSection({
       showPurchasedTeamPlanFallback,
       familyConnectionSettingsLoading: sharedSettingsLoading && sharedSettings === null,
       familyConnectionSettingsFailed,
+      additionalGroups,
       selectedNodeKey,
       setSelectedNodeKey,
       intl,
@@ -976,11 +1010,18 @@ export function ModelProviderSection({
     ],
   );
 
-  const handleSelectNavItem = useCallback((item: (typeof navigationItems)[number]) => {
-    setInvalidProviderTarget(false);
-    setSelectedNodeKey(resolveModelProviderSideSelectionKey(item));
-    setTemplatePickerOpen(false);
-  }, []);
+  const handleSelectNavItem = useCallback(
+    (item: (typeof navigationItems)[number]) => {
+      const key = resolveModelProviderSideSelectionKey(item);
+      if (key === selectedNodeKey) return;
+      onLeaveDraft(() => {
+        setInvalidProviderTarget(false);
+        setSelectedNodeKey(key);
+        setTemplatePickerOpen(false);
+      });
+    },
+    [onLeaveDraft, selectedNodeKey],
+  );
 
   const handleSelectConnectionItem = useCallback(
     (item: (typeof navigationItems)[number]) => {
@@ -1053,16 +1094,10 @@ export function ModelProviderSection({
       ? authenticatedZaiEnterpriseProducts
       : authenticatedEnterpriseProducts;
 
-  if (loadError) {
-    return (
-      <div className="flex min-h-64 flex-col items-center justify-center gap-3 text-ui-base">
-        <p className="text-destructive">{loadError.message}</p>
-        <Button type="button" variant="outline" onClick={reload}>
-          {intl.formatMessage({ id: "common.retry" })}
-        </Button>
-      </div>
-    );
-  }
+  // 聊天供应商读取失败时保留本机独立节点，避免其草稿随无关错误卸载。
+  const isLocalDetails =
+    selectedNavItem?.type === "imageGeneration" || selectedNavItem?.type === "toolModels";
+  const showProviderActions = !isLocalDetails && !loadError;
 
   return (
     <ModelProviderSectionLayout
@@ -1071,36 +1106,44 @@ export function ModelProviderSection({
       loadingLabel={intl.formatMessage({ id: "common.loading" })}
       presetLoading={presetLoading}
       customLoading={customLoading}
-      onRefresh={() => {
-        void (async () => {
-          try {
-            await oauthService.refreshAccountProfile();
-          } catch (error) {
-            logger.warn("[ModelProviderSection] 补关联失败，继续刷新已有套餐", {
-              name: error instanceof Error ? error.name : "unknown",
-            });
-          }
-          await refreshAccountAvailability();
-          await refreshModelProviderSection({
-            refresh,
-            refreshTeamPlanProducts: refreshAuthenticatedEnterpriseProducts,
-          });
-          await refreshCodingPlanEntitlements();
-        })().catch((error) =>
-          logger.warn("[ModelProviderSection] 刷新套餐失败", {
-            name: error instanceof Error ? error.name : "unknown",
-          }),
-        );
-      }}
+      onRefresh={
+        showProviderActions
+          ? () => {
+              void (async () => {
+                try {
+                  await oauthService.refreshAccountProfile();
+                } catch (error) {
+                  logger.warn("[ModelProviderSection] 补关联失败，继续刷新已有套餐", {
+                    name: error instanceof Error ? error.name : "unknown",
+                  });
+                }
+                await refreshAccountAvailability();
+                await refreshModelProviderSection({
+                  refresh,
+                  refreshTeamPlanProducts: refreshAuthenticatedEnterpriseProducts,
+                });
+                await refreshCodingPlanEntitlements();
+              })().catch((error) =>
+                logger.warn("[ModelProviderSection] 刷新套餐失败", {
+                  name: error instanceof Error ? error.name : "unknown",
+                }),
+              );
+            }
+          : undefined
+      }
       addProviderLabel={intl.formatMessage({ id: "settings.modelProvider.addProviderAction" })}
-      onAddProvider={() => setTemplatePickerOpen(true)}
+      onAddProvider={showProviderActions ? () => setTemplatePickerOpen(true) : undefined}
       navigationGroups={navigationGroups}
       selectedNodeKey={selectedNodeKey}
       onSelectNavItem={handleSelectNavItem}
       onReorderProviderIds={handleReorderProviderIds}
       reorderableProviderIds={reorderableProviderIds}
     >
-      {(invalidProviderTarget || navigationUnavailable) && !templatePickerOpen ? (
+      {(invalidProviderTarget ||
+        (navigationUnavailable &&
+          selectedNavItem?.type !== "imageGeneration" &&
+          selectedNavItem?.type !== "toolModels")) &&
+      !templatePickerOpen ? (
         <p role="alert" className="mb-3 text-ui-base text-destructive">
           {intl.formatMessage({
             id: invalidProviderTarget
@@ -1109,7 +1152,10 @@ export function ModelProviderSection({
           })}
         </p>
       ) : null}
-      {teamProjects.error && !templatePickerOpen ? (
+      {teamProjects.error &&
+      !templatePickerOpen &&
+      selectedNavItem?.type !== "imageGeneration" &&
+      selectedNavItem?.type !== "toolModels" ? (
         <div
           className="mb-3 flex flex-wrap items-center gap-2"
           data-testid="team-projects-load-error"
@@ -1134,6 +1180,19 @@ export function ModelProviderSection({
             return handleCreateProvider({ providerName: label });
           }}
         />
+      ) : selectedNavItem?.type === "imageGeneration" ? (
+        <ImageGenerationSettings onDirtyChange={onDraftDirtyChange} />
+      ) : selectedNavItem?.type === "toolModels" ? (
+        <ToolModelDetails onDirtyChange={onDraftDirtyChange} />
+      ) : loadError ? (
+        <div className="flex min-h-64 flex-col items-center justify-center gap-3 text-ui-base">
+          <p role="alert" className="text-destructive">
+            {loadError.message}
+          </p>
+          <Button type="button" variant="outline" onClick={reload}>
+            {intl.formatMessage({ id: "common.retry" })}
+          </Button>
+        </div>
       ) : (
         <ModelProviderSectionDetail
           connectionSelections={effectiveConnectionSelections}

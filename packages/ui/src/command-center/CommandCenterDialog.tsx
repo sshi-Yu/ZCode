@@ -411,6 +411,7 @@ export const CommandCenterDialog = memo(function CommandCenterDialogComponent({
   onSelectTask,
   onSearchResultHighlightRequest,
   onOpenCodeViewer,
+  runResultAction,
 }: {
   open: boolean;
   commands: QuickPickCommand[];
@@ -429,6 +430,7 @@ export const CommandCenterDialog = memo(function CommandCenterDialogComponent({
     request: Omit<ChatSearchResultHighlightRequest, "requestId">,
   ) => void;
   onOpenCodeViewer: (source: CodeViewerSource) => void;
+  runResultAction: (run: () => void) => void | Promise<void>;
 }) {
   const { fileService } = useServices();
   const { intl } = useZCodeIntl();
@@ -659,52 +661,64 @@ export const CommandCenterDialog = memo(function CommandCenterDialogComponent({
   const selectTask = useCallback(
     (row: TaskSearchResultRow) => {
       rememberSearch("conversations");
-      onSearchResultHighlightRequest?.({
-        taskId: row.task.taskId,
-        workspacePath: row.task.workspacePath,
-        workspaceIdentity: row.task.workspaceIdentity,
-        query: searchQuery,
-        snippet: row.searchSnippet?.trim() || row.task.searchSnippet?.trim() || undefined,
-        snippetIndex: row.snippetIndex,
-      });
-      onSelectTask(row.task.workspacePath, row.task.taskId, row.task.workspaceIdentity);
       closeDialog();
+      // 搜索高亮与会话切换属于同一次导航，取消放弃设置草稿时两者都不应生效。
+      void runResultAction(() => {
+        onSearchResultHighlightRequest?.({
+          taskId: row.task.taskId,
+          workspacePath: row.task.workspacePath,
+          workspaceIdentity: row.task.workspaceIdentity,
+          query: searchQuery,
+          snippet: row.searchSnippet?.trim() || row.task.searchSnippet?.trim() || undefined,
+          snippetIndex: row.snippetIndex,
+        });
+        onSelectTask(row.task.workspacePath, row.task.taskId, row.task.workspaceIdentity);
+      });
     },
-    [closeDialog, onSearchResultHighlightRequest, onSelectTask, rememberSearch, searchQuery],
+    [
+      closeDialog,
+      onSearchResultHighlightRequest,
+      onSelectTask,
+      rememberSearch,
+      runResultAction,
+      searchQuery,
+    ],
   );
 
   const selectFile = useCallback(
     (entry: WorkspaceFileEntry) => {
       rememberSearch("files");
-      onOpenCodeViewer({
-        type: "file",
-        title: entry.name,
-        path: entry.path,
-      });
       closeDialog();
+      void runResultAction(() => {
+        onOpenCodeViewer({ type: "file", title: entry.name, path: entry.path });
+      });
     },
-    [closeDialog, onOpenCodeViewer, rememberSearch],
+    [closeDialog, onOpenCodeViewer, rememberSearch, runResultAction],
   );
 
   const selectRecentChange = useCallback(
     (file: TaskChangedFileSummary) => {
       closeDialog();
-      const relativePath = toWorkspaceRelativePath(workspaceAbsPath, file.path);
-      onOpenCodeViewer({
-        type: "file",
-        title: getPathLeaf(relativePath) || relativePath,
-        path: file.path,
+      void runResultAction(() => {
+        const relativePath = toWorkspaceRelativePath(workspaceAbsPath, file.path);
+        onOpenCodeViewer({
+          type: "file",
+          title: getPathLeaf(relativePath) || relativePath,
+          path: file.path,
+        });
       });
     },
-    [closeDialog, onOpenCodeViewer, workspaceAbsPath],
+    [closeDialog, onOpenCodeViewer, runResultAction, workspaceAbsPath],
   );
 
   const selectRecentTask = useCallback(
     (task: ZCodeTaskMeta) => {
-      onSelectTask(task.workspacePath, task.taskId, task.workspaceIdentity);
       closeDialog();
+      void runResultAction(() =>
+        onSelectTask(task.workspacePath, task.taskId, task.workspaceIdentity),
+      );
     },
-    [closeDialog, onSelectTask],
+    [closeDialog, onSelectTask, runResultAction],
   );
 
   const setScope = useCallback(

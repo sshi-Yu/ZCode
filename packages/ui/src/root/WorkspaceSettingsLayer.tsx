@@ -13,6 +13,7 @@ export function WorkspaceSettingsLayer({
   windowsWindowControlsRightPaddingPx,
   captionWorkspacePath,
   onBack,
+  registerSettingsDraftGate,
   onOpenTask,
   onCreateTask,
   onOpenWorkspace,
@@ -41,6 +42,7 @@ export function WorkspaceSettingsLayer({
             windowsWindowControlsRightPaddingPx={windowsWindowControlsRightPaddingPx}
             captionWorkspacePath={captionWorkspacePath}
             onBack={onBack}
+            registerSettingsDraftGate={registerSettingsDraftGate}
             onOpenTask={onOpenTask}
             onCreateTask={onCreateTask}
             onOpenWorkspace={onOpenWorkspace}
@@ -60,6 +62,7 @@ export function WorkspaceSettingsLayer({
           windowsWindowControlsRightPaddingPx={windowsWindowControlsRightPaddingPx}
           captionWorkspacePath={captionWorkspacePath}
           onBack={onBack}
+          registerSettingsDraftGate={registerSettingsDraftGate}
           onOpenTask={onOpenTask}
           onCreateTask={onCreateTask}
           onOpenWorkspace={onOpenWorkspace}

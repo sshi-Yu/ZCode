@@ -2,10 +2,24 @@ version: 1
 
 # 存量模块先标记为 legacy；新模块或完成迁移的模块设置 managed: true。
 modules:
+  - id: tool-model-settings
+    roots: [packages/services/src/tool-model-settings]
+    managed: true
+    requires: [services, shared, provider, provider-node]
+    publicEntrypoints: [packages/services/src/tool-model-settings/contract.ts, packages/services/src/tool-model-settings/node.ts]
+    layers: { adapters: . }
+    owner: desktop-settings
+  - id: ui-tool-model-details
+    roots: [packages/ui/src/settings/tool-model-details]
+    managed: true
+    requires: [ui, services]
+    publicEntrypoints: [packages/ui/src/settings/tool-model-details/index.ts, packages/ui/src/settings/tool-model-details/contract.ts]
+    layers: { ui: . }
+    owner: desktop-settings
   - id: image-generation
     roots: [packages/services/src/image-generation]
     managed: true
-    requires: [services]
+    requires: [services, shared]
     publicEntrypoints:
       [
         packages/services/src/image-generation/index.ts,
@@ -2132,6 +2146,18 @@ modules:
     layers:
       adapters: .
     owner: runtime
+  # ui-image-generation：由 architecture:adopt 登记
+  - id: ui-image-generation
+    roots:
+      - packages/ui/src/image-generation
+    managed: true
+    requires: [ui, services, image-generation]
+    publicEntrypoints:
+      - packages/ui/src/image-generation/index.ts
+      - packages/ui/src/image-generation/contract.ts
+    layers:
+      ui: .
+    owner: desktop-settings
 
 global:
   # 临时时间戳（2026-09-10）：unmanaged-new-file 只约束此日期之后首次入库的文件。

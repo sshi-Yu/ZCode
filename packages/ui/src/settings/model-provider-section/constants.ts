@@ -133,6 +133,7 @@ export function resolveModelProviderDisplayName(
 }
 
 export type ModelProviderNavItem =
+  | { key: string; type: "imageGeneration" | "toolModels"; label: string }
   | {
       key: string;
       type: "preset";
@@ -220,7 +221,7 @@ export type ModelProviderNavItem =
       statusActive: boolean;
     };
 
-export type ModelProviderNavGroupId = "preset" | "custom";
+export type ModelProviderNavGroupId = "preset" | "custom" | "imageGeneration" | "toolModels";
 
 export interface ModelProviderNavGroup {
   id: ModelProviderNavGroupId;

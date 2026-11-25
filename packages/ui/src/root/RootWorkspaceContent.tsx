@@ -1,8 +1,12 @@
-import { memo, useEffect } from "react";
+import { memo, useCallback, useEffect } from "react";
 import { ProjectDirectoryProvider } from "@/project-sidebar/index.js";
 import { App } from "@/App.js";
 import { ScopedErrorBoundary } from "@/ErrorBoundary.js";
 import { ServiceProvider } from "@/hooks/useServices.js";
+import type {
+  RegisterSettingsDraftGate,
+  RunAfterSettingsDraft,
+} from "@/lib/workspaceVisibleCommand.js";
 import { logger } from "@/logger.js";
 import { WorkspaceSettingsLayer } from "@/root/WorkspaceSettingsLayer.js";
 import type { AppProps } from "@/app-shell/types.js";
@@ -34,6 +38,8 @@ interface RootWorkspaceContentProps {
   remoteWorkspaceSessions: NonNullable<AppProps["remoteWorkspaceSessions"]>;
   allowRemoteWorkspace: NonNullable<RootProps["allowRemoteWorkspace"]>;
   handleBackFromSettings: () => void;
+  registerSettingsDraftGate: RegisterSettingsDraftGate;
+  runAfterSettingsDraft: RunAfterSettingsDraft;
   // Bugfix：工作区内的设置层显式转发 props，漏掉它会让分享管理解析到会话却不显示「跳转对话」。
   handleOpenTaskFromSettings: NonNullable<WorkspaceSettingsLayerProps["onOpenTask"]>;
   handleLogout?: () => void;
@@ -78,6 +84,8 @@ export function RootWorkspaceContent({
   remoteWorkspaceSessions,
   allowRemoteWorkspace,
   handleBackFromSettings,
+  registerSettingsDraftGate,
+  runAfterSettingsDraft,
   handleOpenTaskFromSettings,
   handleLogout,
   onLogin,
@@ -99,6 +107,14 @@ export function RootWorkspaceContent({
   windowsWindowControlsRightPaddingPx,
 }: RootWorkspaceContentProps) {
   const workspaceKey = workspaceIdentity?.trim() || workspaceShellPath;
+  const runAfterReturningToWorkspace = useCallback<RunAfterSettingsDraft>(
+    (run, options) =>
+      runAfterSettingsDraft(() => {
+        handleBackFromSettings();
+        run();
+      }, options),
+    [handleBackFromSettings, runAfterSettingsDraft],
+  );
 
   useEffect(() => {
     logger.info("[RootWorkspaceContent] settings layer visibility changed", {
@@ -172,7 +188,7 @@ export function RootWorkspaceContent({
                 onOpenFolderFromWorkspaceMenu={handleOpenFolderFromWorkspaceMenu}
                 onOpenRemoteWorkspace={handleOpenRemoteWorkspace}
                 remoteConnectionInProgress={remoteConnectionInProgress}
-                onReturnToWorkspace={handleBackFromSettings}
+                runAfterReturningToWorkspace={runAfterReturningToWorkspace}
                 allowOpenWorkspace={allowOpenWorkspace}
                 webRemoteControlWorkspaceSwitcher={webRemoteControlWorkspaceSwitcher}
                 initialSidebarFileTreeOpen={initialSidebarFileTreeOpen}
@@ -208,6 +224,7 @@ export function RootWorkspaceContent({
             windowsWindowControlsRightPaddingPx={windowsWindowControlsRightPaddingPx}
             captionWorkspacePath={activeWorkspacePath}
             onBack={activeWorkspacePath ? handleBackFromSettings : undefined}
+            registerSettingsDraftGate={registerSettingsDraftGate}
             onOpenTask={handleOpenTaskFromSettings}
             onCreateTask={handleCreateTask}
             onOpenWorkspace={handleOpenWorkspace}

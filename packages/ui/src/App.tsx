@@ -54,7 +54,10 @@ import {
   setPendingSettingsSection,
   type SettingsSectionId,
 } from "@/lib/settingsNavigation.js";
-import { runWorkspaceVisibleCommand } from "@/lib/workspaceVisibleCommand.js";
+import {
+  runWorkspaceVisibleCommand,
+  type WorkspaceVisibleCommandOptions,
+} from "@/lib/workspaceVisibleCommand.js";
 import { ZCODE_PRODUCT_DOCS_URL } from "@/lib/productDocs.js";
 import appLogoUrl from "@/assets/provider-icons/logo-zai.svg";
 import { resolveTheme } from "@/useTheme.js";
@@ -123,7 +126,7 @@ export function App({
   onOpenFolderFromWorkspaceMenu,
   onOpenRemoteWorkspace,
   remoteConnectionInProgress = false,
-  onReturnToWorkspace,
+  runAfterReturningToWorkspace,
   allowOpenWorkspace = true,
   webRemoteControlWorkspaceSwitcher,
   initialSidebarFileTreeOpen,
@@ -594,14 +597,14 @@ export function App({
     sidePaneFullView.toggle();
   }, [handleToggleSidePaneCollapse, isSidePaneOpen, sidePaneFullView]);
   const runVisibleWorkspaceCommand = useCallback(
-    (run: () => void) => {
+    (run: () => void, options?: WorkspaceVisibleCommandOptions) =>
       runWorkspaceVisibleCommand({
         isWorkspaceVisible,
-        onReturnToWorkspace,
+        runAfterReturningToWorkspace,
         run,
-      });
-    },
-    [isWorkspaceVisible, onReturnToWorkspace],
+        options,
+      }),
+    [isWorkspaceVisible, runAfterReturningToWorkspace],
   );
   const handleCreateTaskIfWritable = useCallback(
     (request?: Parameters<typeof onCreateTask>[0]) => {
@@ -900,11 +903,19 @@ export function App({
   const handleStartExtensionDraft = useCallback<StartExtensionDraft>(
     ({ text, workspace }) => {
       if (!workspace && workspaceReadOnlyReason) return false;
-      runVisibleWorkspaceCommand(() => {
-        handleNavigateToTaskMain();
-        onCreateTask({ initialPrompt: text, ...(workspace ? { targetWorkspace: workspace } : {}) });
-      });
-      return true;
+      let started = false;
+      runVisibleWorkspaceCommand(
+        () => {
+          handleNavigateToTaskMain();
+          onCreateTask({
+            initialPrompt: text,
+            ...(workspace ? { targetWorkspace: workspace } : {}),
+          });
+          started = true;
+        },
+        { confirmDiscard: false },
+      );
+      return started;
     },
     [handleNavigateToTaskMain, onCreateTask, runVisibleWorkspaceCommand, workspaceReadOnlyReason],
   );
@@ -1106,7 +1117,7 @@ export function App({
         },
         handlers: {
           createTask: () => runVisibleWorkspaceCommand(() => handleCreateTaskIfWritable()),
-          openWorkspace: () => runVisibleWorkspaceCommand(onOpenWorkspace),
+          openWorkspace: onOpenWorkspace,
           openSettings: openSettingsTab,
           openSkillsSettings: () => {
             setPendingSettingsPluginIntent("skills");
@@ -1278,6 +1289,7 @@ export function App({
         onSelectTask={handleSelectTask}
         onSearchResultHighlightRequest={handleSearchResultHighlightRequest}
         onOpenCodeViewer={handleOpenCodeViewerIfWritable}
+        runResultAction={runVisibleWorkspaceCommand}
       />
       {/* Bugfix: 反馈是应用级能力，必须固定走本机 base host；SSH session 连接中或断开时，
           workspace-scoped services 会切成断连代理，不能让反馈提交跟随远程 session 失效。 */}

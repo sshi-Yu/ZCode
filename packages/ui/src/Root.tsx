@@ -51,6 +51,10 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { SSHDialog } from "@/SSHDialog.js";
 import { SettingsPage } from "@/SettingsPage.js";
 import { setPendingSettingsSectionIntent } from "@/lib/settingsNavigation.js";
+import type {
+  RegisterSettingsDraftGate,
+  RunAfterSettingsDraft,
+} from "@/lib/workspaceVisibleCommand.js";
 import {
   CredentialStoreRecovery,
   WelcomeScreen,
@@ -734,6 +738,18 @@ function RootInner({
       ? "web-remote-replayable"
       : "desktop-continuous",
   });
+  const settingsDraftGate = useRef<RunAfterSettingsDraft | null>(null);
+  const registerSettingsDraftGate = useCallback<RegisterSettingsDraftGate>((gate) => {
+    settingsDraftGate.current = gate;
+    return () => {
+      if (settingsDraftGate.current === gate) settingsDraftGate.current = null;
+    };
+  }, []);
+  const runAfterSettingsDraft = useCallback<RunAfterSettingsDraft>((run, options) => {
+    const gate = settingsDraftGate.current;
+    if (gate) return gate(run, options);
+    run();
+  }, []);
   const handleRemoteWorkspaceActivated = useCallback(
     ({
       workspacePath,
@@ -1018,6 +1034,18 @@ function RootInner({
     });
   }, [isStartupRenderBlocked, welcomeScreenOpenReason]);
 
+  const openWorkspaceFromShortcut = useCallback(() => {
+    handleOpenWorkspace(runAfterSettingsDraft);
+  }, [handleOpenWorkspace, runAfterSettingsDraft]);
+  const startTaskFromShortcut = useCallback(
+    (source: string) => {
+      void runAfterSettingsDraft(() => {
+        void startNewTaskFromActiveWorkspace(source);
+      });
+    },
+    [runAfterSettingsDraft, startNewTaskFromActiveWorkspace],
+  );
+
   useRootPlatformEffects({
     clientMode: isWebRemoteControlRoot ? "web-remote-replayable" : "desktop-continuous",
     initialWorkspaceAbsPath,
@@ -1034,8 +1062,8 @@ function RootInner({
     platform,
     activateTabByPath,
     startDraftInWorkspace,
-    startNewTaskFromActiveWorkspace,
-    openWorkspace: handleOpenWorkspace,
+    startNewTaskFromActiveWorkspace: startTaskFromShortcut,
+    openWorkspace: openWorkspaceFromShortcut,
     openWorkspacePath: handleSelectProject,
     setWorkspaceActionError,
     allowOpenWorkspace,
@@ -1475,7 +1503,7 @@ function RootInner({
         onCancel={() => setDirectoryBrowserOpen(false)}
         onSelect={(path) => {
           setDirectoryBrowserOpen(false);
-          void handleSelectProject(path);
+          void runAfterSettingsDraft(() => void handleSelectProject(path));
         }}
       />
     </ScopedErrorBoundary>
@@ -1512,6 +1540,7 @@ function RootInner({
     isWebRemoteControl: Boolean(webRemoteControlWorkspaceSwitcher),
     captionWorkspacePath: activeWorkspacePath,
     onBack: activeWorkspacePath ? handleBackFromSettings : undefined,
+    registerSettingsDraftGate,
     onOpenTask: handleOpenTaskFromSettings,
     onCreateTask: handleCreateTask,
     onOpenWorkspace: handleOpenWorkspace,
@@ -1649,7 +1678,7 @@ function RootInner({
                 handleCreateTask={handleCreateTask}
                 handleCreateConversationTask={handleCreateConversationTask}
                 handleResolveConversationWorkspace={handleResolveConversationWorkspaceForShell}
-                handleOpenWorkspace={handleOpenWorkspace}
+                handleOpenWorkspace={openWorkspaceFromShortcut}
                 handleOpenFolderFromWorkspaceMenu={handleOpenFolderFromWorkspaceMenu}
                 handleOpenRemoteWorkspace={
                   allowRemoteWorkspace ? handleOpenRemoteConnection : undefined
@@ -1658,6 +1687,8 @@ function RootInner({
                 remoteWorkspaceSessions={remoteWorkspaceSessions}
                 allowRemoteWorkspace={allowRemoteWorkspace}
                 handleBackFromSettings={handleBackFromSettings}
+                registerSettingsDraftGate={registerSettingsDraftGate}
+                runAfterSettingsDraft={runAfterSettingsDraft}
                 handleOpenTaskFromSettings={handleOpenTaskFromSettings}
                 handleLogout={user ? handleLogout : undefined}
                 onLogin={!user ? handleOpenLoginEntry : undefined}

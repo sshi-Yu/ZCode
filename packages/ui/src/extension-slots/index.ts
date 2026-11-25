@@ -30,7 +30,6 @@ export { TurnFooterSlot } from "@/extension-slots/components/TurnFooterSlot.js";
 export { ComposerStatusSlot } from "@/extension-slots/components/ComposerStatusSlot.js";
 export { ExtensionLauncherSection } from "@/extension-slots/components/ExtensionLauncherSection.js";
 export { ExtensionViewPane } from "@/extension-slots/components/ExtensionViewPane.js";
-export { GenImageWorkspace } from "@/extension-slots/components/GenImageWorkspace.js";
 export { ExtensionLogsPane } from "@/extension-slots/components/ExtensionLogsPane.js";
 export { ExtensionPermissionsSection } from "@/extension-slots/components/ExtensionPermissionsSection.js";
 export {

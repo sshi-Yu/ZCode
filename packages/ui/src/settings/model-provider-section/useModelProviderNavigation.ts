@@ -63,6 +63,7 @@ interface UseModelProviderNavigationOptions {
   familyConnectionSettingsFailed?: boolean;
   subscribedTeamProducts?: EnterpriseCodingPlanProductDisplay[];
   showPurchasedTeamPlanFallback?: boolean;
+  additionalGroups: ModelProviderNavGroup[];
   selectedNodeKey: string | null;
   setSelectedNodeKey: (key: string | null) => void;
   intl: ReturnType<typeof useZCodeIntl>["intl"];
@@ -84,6 +85,7 @@ export function useModelProviderNavigation({
   familyConnectionSettingsFailed = false,
   subscribedTeamProducts = [],
   showPurchasedTeamPlanFallback = false,
+  additionalGroups,
   selectedNodeKey,
   setSelectedNodeKey,
   intl,
@@ -237,8 +239,9 @@ export function useModelProviderNavigation({
       },
     ];
 
-    return groups;
+    return [...groups, ...additionalGroups];
   }, [
+    additionalGroups,
     customProviders,
     codingPlanItems,
     connectionModeCodingPlanItems,
@@ -574,8 +577,8 @@ export function connectionSelectionMatchesNavigationItem(
   selection: ProviderFamilyConnectionSelection,
   item: Exclude<ModelProviderNavGroup["items"][number], { type: "codingPlanLoading" }>,
 ): boolean {
-  if (item.type === "custom") return false;
-  const familySpec = resolveModelProviderFamilySpecByProviderId(item.presetId ?? "");
+  if (item.type !== "codingPlan" && item.type !== "teamPlan") return false;
+  const familySpec = resolveModelProviderFamilySpecByProviderId(item.presetId);
   if (familySpec?.id !== family) return false;
   if (selection.kind === "start-plan") {
     return false;

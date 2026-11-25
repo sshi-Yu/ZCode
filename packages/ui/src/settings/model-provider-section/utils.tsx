@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { type BuiltinModelProviderId, type OAuthProviderId } from "@zcode/shared";
-import { PackageIcon } from "lucide-react";
+import { ImageIcon, PackageIcon, WrenchIcon } from "lucide-react";
 import { ProviderLogo } from "./ProviderLogo.js";
 import {
   CODING_PLAN_PROVIDER_SPECS,
@@ -37,6 +37,8 @@ export function resolveModelProviderNavLogo(item: ModelProviderNavItem) {
 }
 
 export function renderModelProviderNavIcon(item: ModelProviderNavItem): ReactNode {
+  if (item.type === "imageGeneration") return <ImageIcon className="size-4" />;
+  if (item.type === "toolModels") return <WrenchIcon className="size-4" />;
   if ("provider" in item && item.provider) {
     return <ProviderLogo logo={resolveModelProviderNavLogo(item)} className="size-4" />;
   }

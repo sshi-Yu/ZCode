@@ -1,17 +1,29 @@
+export interface WorkspaceVisibleCommandOptions {
+  /** A non-interactive caller cannot ask the user to discard a settings draft. */
+  confirmDiscard?: boolean;
+}
+
+export type RunAfterSettingsDraft = (
+  run: () => void,
+  options?: WorkspaceVisibleCommandOptions,
+) => void | Promise<void>;
+
+export type RegisterSettingsDraftGate = (gate: RunAfterSettingsDraft) => () => void;
+
 export function runWorkspaceVisibleCommand({
   isWorkspaceVisible,
-  onReturnToWorkspace,
+  runAfterReturningToWorkspace,
   run,
+  options,
 }: {
   isWorkspaceVisible: boolean;
-  onReturnToWorkspace?: () => void;
+  runAfterReturningToWorkspace?: RunAfterSettingsDraft;
   run: () => void;
+  options?: WorkspaceVisibleCommandOptions;
 }) {
-  if (!isWorkspaceVisible) {
-    // 设置页只是覆盖 workspace，底层 App 仍会响应 quickpick/快捷键。
-    // 如果直接执行侧边栏、终端、文件搜索等 workspace 命令，状态会在被覆盖的底层变化，用户看起来像命令没生效。
-    // 这里先切回工作区再执行命令，让用户立即看到命令结果。
-    onReturnToWorkspace?.();
+  if (!isWorkspaceVisible && runAfterReturningToWorkspace) {
+    // 返回和命令必须一起通过设置草稿门禁；仅拦返回会悄悄改变底层工作区状态。
+    return runAfterReturningToWorkspace(run, options);
   }
 
   run();

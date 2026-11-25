@@ -20,6 +20,7 @@ import type { SavedWorkflowsOpenTarget } from "@/settings/saved-workflows/SavedW
 import type { SavedWorkflowHubTarget } from "@/v4/savedWorkflowHubContext.js";
 import type { WebRemoteControlWorkspaceSwitcherApi } from "@/root/types.js";
 import type { WebRemoteControlTerminalTransportState } from "@/root/types.js";
+import type { RunAfterSettingsDraft } from "@/lib/workspaceVisibleCommand.js";
 import type { BrowserNavigationRequest, RecentClosedSidePaneTab } from "@/hooks/useAppPanels.js";
 import type { CodeViewerSource } from "@/lib/codeViewer.js";
 import type { AssistantPreviewCardsAutoOpenRequest } from "@/lib/assistantPreviewCards.js";
@@ -189,7 +190,8 @@ export interface AppProps {
   onOpenFolderFromWorkspaceMenu: () => void;
   onOpenRemoteWorkspace?: (preference?: RemoteConnectionOpenPreference) => void | boolean;
   remoteConnectionInProgress?: boolean;
-  onReturnToWorkspace?: () => void;
+  /** Admit return and its follow-up command together through the mounted settings draft gate. */
+  runAfterReturningToWorkspace?: RunAfterSettingsDraft;
   allowOpenWorkspace?: boolean;
   webRemoteControlWorkspaceSwitcher?: WebRemoteControlWorkspaceSwitcherApi;
   initialSidebarFileTreeOpen?: boolean;

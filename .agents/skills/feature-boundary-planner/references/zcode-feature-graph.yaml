@@ -2954,6 +2954,69 @@ nodes:
       - symbol: "resolveProviderModelDraftCommit"
         file: "packages/ui/src/settings/model-provider-section/ProviderModelMetadata.ts"
 
+  - id: "surface.image-generation-workspace"
+    kind: "ui-surface"
+    label: "Native Desktop image generation workspace and local gallery"
+    aliases: ["生图", "GenImage"]
+    docs:
+      - "docs/superpowers/specs/2026-11-25-builtin-image-generation-model-settings-design.md"
+    codeSeeds:
+      - symbol: "WorkspaceShellLayout"
+        file: "packages/ui/src/app-shell/WorkspaceShellLayout.tsx"
+
+  - id: "surface.image-generation-settings"
+    kind: "ui-surface"
+    label: "Image connections and models in model settings"
+    aliases: ["生图连接", "生图模型配置"]
+    codeSeeds:
+      - symbol: "ModelProviderSection"
+        file: "packages/ui/src/settings/ModelProviderSection.tsx"
+
+  - id: "surface.tool-model-settings"
+    kind: "ui-surface"
+    label: "Model selection for Desktop utilities"
+    aliases: ["小工具", "工具模型"]
+    docs:
+      - "docs/ui/tool-model-settings.md"
+    codeSeeds:
+      - symbol: "ModelProviderSection"
+        file: "packages/ui/src/settings/ModelProviderSection.tsx"
+
+  - id: "surface.git-commit-message-tool-model"
+    kind: "ui-surface"
+    label: "Git commit message generation with a confirmed Desktop utility model"
+    aliases: ["Git 提交说明模型", "Git 提交说明生成确认"]
+    docs:
+      - "docs/ui/tool-model-settings.md"
+    codeSeeds:
+      - symbol: "GitActionMenu"
+        file: "packages/ui/src/GitActionMenu.tsx"
+      - symbol: "useGitActions"
+        file: "packages/ui/src/hooks/useGitActions.ts"
+
+  - id: "service.local-tool-model-settings"
+    kind: "service"
+    label: "Local Host utility model bindings and Git generation confirmation owner"
+    codeSeeds:
+      - symbol: "createToolModelSettingsService"
+        file: "packages/services/src/tool-model-settings/node.ts"
+
+  - id: "service.workspace-text-model-factory"
+    kind: "service"
+    label: "CLI workspace text generation and Registry model creation"
+    codeSeeds:
+      - symbol: "ApiProviderModelRuntime"
+        file: "apps/zcode-cli/packages/bootstrap/src/app/provider-registry-model-runtime.ts"
+
+  - id: "service.local-image-generation"
+    kind: "service"
+    label: "Local Window Host image settings, job admission and gallery owner"
+    docs:
+      - "packages/services/src/image-generation/CONTRACT.md"
+    codeSeeds:
+      - symbol: "IImageGenerationService"
+        file: "packages/services/src/image-generation/contract.ts"
+
   - id: "capability.customize-capability-search"
     kind: "capability"
     label: "Scope-aware Plugin capability search"
@@ -7373,6 +7436,44 @@ edges:
     type: "renders-vision-badge-in"
     rank: "must-inspect"
     condition: "The compact model row renders Vision beside context capacity without changing model metadata or persistence."
+  - from: "surface.provider-settings"
+    to: "surface.image-generation-settings"
+    type: "includes-dedicated-detail"
+    rank: "must-inspect"
+  - from: "surface.provider-settings"
+    to: "surface.tool-model-settings"
+    type: "includes-dedicated-detail"
+    rank: "must-inspect"
+  - from: "surface.image-generation-settings"
+    to: "service.local-image-generation"
+    type: "commits-to"
+    rank: "must-inspect"
+    condition: "Only the local desktop attachment owns image connections. Credentials are write-only at the settings boundary."
+  - from: "surface.image-generation-workspace"
+    to: "service.local-image-generation"
+    type: "commits-to"
+    rank: "must-inspect"
+    condition: "Local gallery and generation remain bound to the base Host across workspace changes."
+  - from: "surface.tool-model-settings"
+    to: "capability.provider-registry"
+    type: "options-from"
+    rank: "should-inspect"
+    condition: "Tool bindings reference eligible text models independently of the chat default."
+  - from: "surface.tool-model-settings"
+    to: "service.local-tool-model-settings"
+    type: "commits-to"
+    rank: "must-inspect"
+    condition: "Only the local desktop attachment publishes this service. The tool binding has its own revision."
+  - from: "surface.git-commit-message-tool-model"
+    to: "service.local-tool-model-settings"
+    type: "confirms-with"
+    rank: "must-inspect"
+    condition: "An explicit Git binding requires confirmation of the chosen model and input scope. The result fills a draft for a separate commit action."
+  - from: "service.local-tool-model-settings"
+    to: "service.workspace-text-model-factory"
+    type: "executes-through"
+    rank: "must-inspect"
+    condition: "The Host dispatches the confirmed prompt snapshot and model fingerprint. CLI checks the fingerprint before creating the Model from the same Registry result."
   - from: "surface.provider-settings"
     to: "service.provider-settings"
     type: "commits-to"

@@ -69,7 +69,7 @@ import type {
   SavedWorkflowsOpenRunParams,
 } from "@/settings/saved-workflows/SavedWorkflowsSection.js";
 import { AutomationsMainBreadcrumbFrame } from "@/settings/AutomationsMainBreadcrumbFrame.js";
-import { GenImageWorkspace } from "@/extension-slots/index.js";
+import { GenImageWorkspace } from "@/image-generation/index.js";
 import { setPendingSettingsSectionIntent } from "@/lib/settingsNavigation.js";
 import { PluginStorePage } from "@/settings/PluginStorePage.js";
 import { TaskFindDialog } from "@/quickpick/TaskFindDialog.js";
@@ -503,7 +503,7 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
     [onWorkspaceMainViewChange],
   );
   const handleOpenGenImageSettings = useCallback(() => {
-    setPendingSettingsSectionIntent("modelProvider");
+    setPendingSettingsSectionIntent("modelProvider", { imageGeneration: true });
     tabStoreApi.getState().openSettingsTab();
   }, [tabStoreApi]);
   // Windows/Linux 原先遗漏外层留白，导致独立面板贴住窗口边缘；桌面统一使用 4px 间距。
@@ -2333,18 +2333,12 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
   const shouldRenderMainViewHeader = workspaceMainView !== "automations" && !hasStandaloneMainView;
   const genImageMain = genImageActive ? (
     <main className="flex h-full min-h-0 flex-1 flex-col bg-background">
-      <AutomationsMainBreadcrumbFrame
-        isDesktop={Boolean(isDesktop)}
-        sectionLabel={intl.formatMessage({ id: "genimage.title" })}
-        ariaLabel={intl.formatMessage({ id: "settings.breadcrumbLabel" })}
-      >
-        {isWorkspaceVisible ? (
-          <GenImageWorkspace
-            onOpenSettings={handleOpenGenImageSettings}
-            onOpenPluginStore={handleOpenPluginStore}
-          />
-        ) : null}
-      </AutomationsMainBreadcrumbFrame>
+      {isWorkspaceVisible ? (
+        <GenImageWorkspace
+          onOpenSettings={handleOpenGenImageSettings}
+          showWindowControls={usesInlineWindowControls}
+        />
+      ) : null}
     </main>
   ) : null;
   const shouldRenderWorkspaceHeader =

@@ -67,7 +67,7 @@ export function shouldShowModelProviderGroupLoadingIndicator(params: {
   if (params.groupId === "preset") {
     return params.presetLoading;
   }
-  return params.customLoading;
+  return params.groupId === "custom" && params.customLoading;
 }
 
 export function resolveModelProviderSideNavLabel(item: ModelProviderNavItem): string {
@@ -104,6 +104,7 @@ function ModelProviderNavigationButton({
         disabled={isLoadingItem}
         aria-label={label}
         aria-selected={isSelected}
+        data-tool-model-navigation={item.type === "toolModels" || undefined}
         data-state={isSelected ? "selected" : "idle"}
         data-testid={testId(TID_MODEL_PROVIDER_NAV_ITEM, item.key)}
         onClick={() => {
@@ -406,7 +407,7 @@ export function ModelProviderSectionNavigation({
                   selectedNodeKey={selectedNodeKey}
                   onSelectNavItem={onSelectNavItem}
                 />
-              ) : (
+              ) : group.id === "custom" ? (
                 <SortableProviderNavigationGroup
                   group={group}
                   selectedNodeKey={selectedNodeKey}
@@ -415,6 +416,16 @@ export function ModelProviderSectionNavigation({
                   reorderableProviderIds={reorderableProviderIds}
                   sensors={sensors}
                 />
+              ) : (
+                group.items.map((item) => (
+                  <ModelProviderNavigationButton
+                    key={item.key}
+                    item={item}
+                    label={item.label}
+                    selectedNodeKey={selectedNodeKey}
+                    onSelectNavItem={onSelectNavItem}
+                  />
+                ))
               )}
             </div>
           ))}

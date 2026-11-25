@@ -21,6 +21,7 @@ import { reportAppTelemetryEvent } from "@/lib/appTelemetry.js";
 import { resolveLogoutProviderFamilyDomain } from "@/lib/providerFamilyDomainSettings.js";
 import { isRendererReloadNavigation } from "@/lib/rendererNavigation.js";
 import { parseWslUncWorkspacePath } from "@/lib/wslUncWorkspace.js";
+import type { RunAfterSettingsDraft } from "@/lib/workspaceVisibleCommand.js";
 import { logger } from "@/logger.js";
 import { toast } from "@/components/ui/toast.js";
 import { ensureTaskNavigationWorkspace } from "@/app-shell/taskNavigationWorkspace.js";
@@ -663,54 +664,60 @@ export function useRootWorkspaceActions({
     ],
   );
 
-  const handleOpenWorkspace = useCallback(() => {
-    if (!allowOpenWorkspace) {
-      // Web 远程控制当前只保证“进入 desktop 已打开的 workspace”。
-      // 之前这里继续放开“打开工作区”，用户会被带进打开工作区中间页，
-      // 但后续的新工作区/新会话链路并没有在 Web 远程控制模式里补齐，看起来就像页面一直卡住。
-      // 这里直接拦掉入口，避免把用户带进半支持状态。
-      logger.info("[Root] 当前模式不支持打开其他工作区，已忽略请求");
-      return;
-    }
-    setWorkspaceActionError(null);
+  const handleOpenWorkspace = useCallback(
+    (beforeNavigate?: RunAfterSettingsDraft) => {
+      if (!allowOpenWorkspace) {
+        // Web 远程控制当前只保证“进入 desktop 已打开的 workspace”。
+        // 之前这里继续放开“打开工作区”，用户会被带进打开工作区中间页，
+        // 但后续的新工作区/新会话链路并没有在 Web 远程控制模式里补齐，看起来就像页面一直卡住。
+        // 这里直接拦掉入口，避免把用户带进半支持状态。
+        logger.info("[Root] 当前模式不支持打开其他工作区，已忽略请求");
+        return;
+      }
+      setWorkspaceActionError(null);
+      const navigate = (run: () => void) => {
+        if (beforeNavigate) void beforeNavigate(run);
+        else run();
+      };
+      const selectProject = (path: string) => navigate(() => void handleSelectProject(path));
 
-    if (preferDirectoryBrowser) {
+      if (preferDirectoryBrowser) {
+        void openFolderFromWorkspaceEntry({
+          preferDirectoryBrowser,
+          openDirectoryBrowser,
+          selectDirectory: () => platform.selectDirectory(),
+          onSelectProject: selectProject,
+        });
+        return;
+      }
+
+      // 打开工作区中间页作为“新标签页”会在启动空态、Cmd/Ctrl+O
+      // 和菜单打开工作区时抢占整页。现在打开工作区只保留为动作：本地优先直接弹系统目录选择，
+      // 不再进入中间页面；不支持系统目录选择的壳层由启动兜底负责创建默认 workspace。
+      if (!supportsSettings) {
+        navigate(() => {
+          void handleEnsureConversationWorkspace().catch((error) => {
+            logger.error("[Root] 创建对话 workspace 失败", { error });
+          });
+        });
+        return;
+      }
+
       void openFolderFromWorkspaceEntry({
-        preferDirectoryBrowser,
-        openDirectoryBrowser,
         selectDirectory: () => platform.selectDirectory(),
-        onSelectProject: (path) => {
-          void handleSelectProject(path);
-        },
+        onSelectProject: selectProject,
       });
-      return;
-    }
-
-    // 打开工作区中间页作为“新标签页”会在启动空态、Cmd/Ctrl+O
-    // 和菜单打开工作区时抢占整页。现在打开工作区只保留为动作：本地优先直接弹系统目录选择，
-    // 不再进入中间页面；不支持系统目录选择的壳层由启动兜底负责创建默认 workspace。
-    if (!supportsSettings) {
-      void handleEnsureConversationWorkspace().catch((error) => {
-        logger.error("[Root] 创建对话 workspace 失败", { error });
-      });
-      return;
-    }
-
-    void openFolderFromWorkspaceEntry({
-      selectDirectory: () => platform.selectDirectory(),
-      onSelectProject: (path) => {
-        void handleSelectProject(path);
-      },
-    });
-  }, [
-    allowOpenWorkspace,
-    handleEnsureConversationWorkspace,
-    handleSelectProject,
-    openDirectoryBrowser,
-    platform,
-    preferDirectoryBrowser,
-    supportsSettings,
-  ]);
+    },
+    [
+      allowOpenWorkspace,
+      handleEnsureConversationWorkspace,
+      handleSelectProject,
+      openDirectoryBrowser,
+      platform,
+      preferDirectoryBrowser,
+      supportsSettings,
+    ],
+  );
 
   const handleOpenFolderFromWorkspaceMenu = useCallback(() => {
     if (!allowOpenWorkspace) {

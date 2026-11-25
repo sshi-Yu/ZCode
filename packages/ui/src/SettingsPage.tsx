@@ -6,6 +6,7 @@ import { ArrowLeft, type LucideIcon } from "lucide-react";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -30,11 +31,11 @@ import {
   testId,
 } from "@zcode/shared/test-ids";
 import { Button } from "@/components/ui/button.js";
-import { Input } from "@/components/ui/input.js";
 import { toast } from "@/components/ui/toast.js";
 import { DesktopWindowFrame } from "@/DesktopWindowFrame.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { usePlatform } from "@/hooks/usePlatform.js";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog.js";
 import { logger } from "@/logger.js";
 import { getPathLeaf } from "@/lib/path.js";
 import { useProviderSettingsView } from "@/hooks/useProviderSettingsView.js";
@@ -123,6 +124,10 @@ import { ServiceProvider, useServices } from "@/hooks/useServices.js";
 import { DEFAULT_APP_TOOL_SEARCH_MODE, type AppToolSearchMode } from "@zcode/shared";
 import { useSettings } from "@/hooks/useSettingService.js";
 import type { CreateTaskRequest, RemoteConnectionOpenPreference } from "@/app-shell/types.js";
+import type {
+  RegisterSettingsDraftGate,
+  RunAfterSettingsDraft,
+} from "@/lib/workspaceVisibleCommand.js";
 import { useBaseWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
 import { resolveModelProviderConnectivityWorkspacePath } from "@/lib/modelProviderConnectivityTarget.js";
 import {
@@ -301,112 +306,6 @@ function SettingsSidebarButton({
   );
 }
 
-function GenImageModelSettings({
-  service,
-}: {
-  service: NonNullable<ReturnType<typeof useServices>["imageGenerationService"]>;
-}) {
-  const { intl } = useZCodeIntl();
-  const [configured, setConfigured] = useState<boolean | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    let active = true;
-    void service.getSettings().then(
-      (settings) => {
-        if (active) setConfigured(settings.configured);
-      },
-      () => {
-        if (active) setError(true);
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [service]);
-
-  async function save(apiKey: string) {
-    if (busy) return;
-    setBusy(true);
-    setError(false);
-    try {
-      await service.saveSettings({ apiKey });
-      if (inputRef.current) inputRef.current.value = "";
-      setConfigured((await service.getSettings()).configured);
-    } catch {
-      setError(true);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <section
-      className="mb-6 space-y-3 rounded-xl border border-border bg-card p-4 sm:p-5"
-      aria-labelledby="genimage-settings-title"
-    >
-      <h2 id="genimage-settings-title" className="text-ui-base font-semibold">
-        {intl.formatMessage({ id: "genimage.modelSettings" })}
-      </h2>
-      <p className="text-ui-sm text-foreground-subtle">OpenAI Images · gpt-image-1</p>
-      <p role="status" className="text-ui-sm text-foreground-subtle">
-        {intl.formatMessage({
-          id:
-            configured === null && !error
-              ? "common.loading"
-              : configured
-                ? "genimage.settings.configured"
-                : "genimage.settings.unconfigured",
-        })}
-      </p>
-      <form
-        className="space-y-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const apiKey = inputRef.current?.value.trim();
-          if (apiKey) void save(apiKey);
-        }}
-      >
-        <label className="text-ui-sm" htmlFor="genimage-api-key">
-          {intl.formatMessage({ id: "genimage.settings.apiKey" })}
-        </label>
-        <div className="flex flex-wrap items-center gap-2">
-          <Input
-            id="genimage-api-key"
-            data-testid="genimage-api-key"
-            ref={inputRef}
-            className="w-full sm:max-w-80"
-            type="password"
-            autoComplete="off"
-            spellCheck={false}
-            maxLength={4096}
-            required
-            disabled={busy || (configured === null && !error)}
-          />
-          <Button
-            type="submit"
-            data-testid="genimage-save-settings"
-            disabled={busy || (configured === null && !error)}
-          >
-            {intl.formatMessage({ id: "common.save" })}
-          </Button>
-          {configured ? (
-            <Button type="button" variant="outline" disabled={busy} onClick={() => void save("")}>
-              {intl.formatMessage({ id: "genimage.settings.remove" })}
-            </Button>
-          ) : null}
-        </div>
-      </form>
-      {error ? (
-        <p role="alert" className="text-ui-sm text-destructive">
-          {intl.formatMessage({ id: "genimage.settings.error" })}
-        </p>
-      ) : null}
-    </section>
-  );
-}
-
 export function SettingsPage({
   isDesktop,
   isWindowsDesktop,
@@ -415,6 +314,7 @@ export function SettingsPage({
   windowsWindowControlsRightPaddingPx: _windowsWindowControlsRightPaddingPx,
   captionWorkspacePath,
   onBack,
+  registerSettingsDraftGate,
   onOpenTask,
   onCreateTask,
   onOpenWorkspace,
@@ -431,6 +331,7 @@ export function SettingsPage({
   windowsWindowControlsRightPaddingPx?: number;
   captionWorkspacePath?: string | null;
   onBack?: () => void;
+  registerSettingsDraftGate?: RegisterSettingsDraftGate;
   /** 设置页内跳转到指定会话（分享管理「跳转对话」）；Root 注入。 */
   onOpenTask?: (target: SettingsShareTaskTarget) => void;
   onCreateTask?: (request?: CreateTaskRequest) => void;
@@ -442,7 +343,7 @@ export function SettingsPage({
   onLogout?: () => void;
   user?: UserInfo | null;
 }) {
-  const { intl, localePreference, setLocalePreference } = useZCodeIntl();
+  const { intl, locale, localePreference, setLocalePreference } = useZCodeIntl();
   const { settingsSectionGroups, settingsSections } = useMemo(
     () =>
       createSettingsPageConfig({
@@ -801,6 +702,47 @@ export function SettingsPage({
   // 「通用」页「打开引导」打开职业引导；迁移向导只从数据同步页「迁移」进入。
   const openOccupationOnboarding = () => setNewUserOnboardingOpen(true);
   const requestMigrationDialog = useZCodeStore((state) => state.requestOnboardingDialog);
+  const confirmSettingsNavigation = useConfirmDialog();
+  const modelDraftDirty = useRef(false);
+  const modelDraftConfirmation = useRef<AbortController | null>(null);
+  const onModelDraftDirtyChange = useCallback((dirty: boolean) => {
+    modelDraftDirty.current = dirty;
+  }, []);
+  useLayoutEffect(() => () => modelDraftConfirmation.current?.abort(), []);
+  const leaveModelDraft = useCallback<RunAfterSettingsDraft>(
+    (proceed, options) => {
+      if (modelDraftConfirmation.current) return;
+      if (!modelDraftDirty.current) {
+        proceed();
+        return;
+      }
+      if (options?.confirmDiscard === false) return;
+      const controller = new AbortController();
+      modelDraftConfirmation.current = controller;
+      return confirmSettingsNavigation(
+        {
+          title: locale === "zh-CN" ? "放弃未保存的模型设置？" : "Discard unsaved model settings?",
+          explicitConfirm: true,
+          intent: "genimage-settings-discard",
+        },
+        controller.signal,
+      ).then((confirmed) => {
+        if (modelDraftConfirmation.current !== controller) return;
+        modelDraftConfirmation.current = null;
+        if (!confirmed || controller.signal.aborted) return;
+        // 原生新建／打开工作区可能尚在准备，甚至无法离开；仅详情的保存或卸载能清除草稿状态。
+        proceed();
+      });
+    },
+    [confirmSettingsNavigation, locale],
+  );
+  useLayoutEffect(
+    () => registerSettingsDraftGate?.(leaveModelDraft),
+    [leaveModelDraft, registerSettingsDraftGate],
+  );
+  const handleSettingsBack = useCallback(() => {
+    if (onBack) void leaveModelDraft(onBack);
+  }, [leaveModelDraft, onBack]);
   const setActiveSettingsSection = useCallback(
     (section: SettingsSectionId, fallbackSection: SettingsSectionId = activeSection) => {
       const resolvedSection = resolveSettingsSection(section, fallbackSection);
@@ -811,13 +753,17 @@ export function SettingsPage({
     [activeSection],
   );
   const navigateToSettingsSection = (section: SettingsSectionId, setting?: SettingsSearchId) => {
-    setPluginNavigationOrigin(undefined);
-    setTargetSourceServerId(undefined);
-    // SG-01：worktree 审核上下文只属于「去审核」那次导航；侧栏或搜索进入钩子时按普通入口。
-    setHookWorkspacePath(undefined);
-    setSettingsSectionNavigationVersion((version) => version + 1);
-    setActiveSettingsSection(section);
-    if (setting) setSearchTarget({ id: setting });
+    const navigate = () => {
+      setPluginNavigationOrigin(undefined);
+      setTargetSourceServerId(undefined);
+      // SG-01：worktree 审核上下文只属于「去审核」那次导航；侧栏或搜索进入钩子时按普通入口。
+      setHookWorkspacePath(undefined);
+      setSettingsSectionNavigationVersion((version) => version + 1);
+      setActiveSettingsSection(section);
+      if (setting) setSearchTarget({ id: setting });
+    };
+    if (resolveSettingsSection(section) === activeSection) navigate();
+    else leaveModelDraft(navigate);
   };
   useEffect(() => {
     if (!isSettingsSectionAvailable(activeSection, Boolean(isDesktop))) {
@@ -830,8 +776,8 @@ export function SettingsPage({
   const handleOpenUsageSettings = useCallback(() => {
     // 设置页 sidebar footer 里的齿轮/返回按钮复用 onBack，
     // 但头像菜单的“使用统计”应该停留在设置页并切到 Usage，不能跟着返回工作区。
-    setActiveSettingsSection("usage");
-  }, [setActiveSettingsSection]);
+    leaveModelDraft(() => setActiveSettingsSection("usage"));
+  }, [leaveModelDraft, setActiveSettingsSection]);
   const activeWorkspacePath = useTabStore((state) => state.activeWorkspacePath);
   const activateTab = useTabStore((state) => state.activateTab);
   const openSettingsTab = useTabStore((state) => state.openSettingsTab);
@@ -973,32 +919,36 @@ export function SettingsPage({
         // SettingsPage 已打开时再次从 quickpick 点“个性化/MCP”等设置入口，
         // 页面不会重新挂载，之前写入的 pending section 无人消费，看起来像点击没反应。
         // 这里订阅同窗口跳转意图，立即切换当前设置分区。
-        setActiveSettingsSection(section, activeSection);
-        // 设置入口是一级路由边界。即使仍落在同一 section，也必须销毁旧的 New/Edit/Detail 子状态。
-        setSettingsSectionNavigationVersion((version) => version + 1);
-        setTargetSourceServerId(section === "remoteDevices" ? detail?.sourceServerId : undefined);
-        setTargetSourceServerDetails(
-          section === "remoteDevices" && detail?.sourceServerDetails === true,
-        );
-        if (section === "usage" && detail?.usageTab) {
-          setUsageActiveTab(detail.usageTab);
-        }
-        // MCP 独立分区也接收工作区意图，否则会话内审核会误落到用户配置。
-        setPluginScopeKey(detail?.pluginScopeKey);
-        setHookWorkspacePath(detail?.hookWorkspacePath);
-        if (resolveSettingsSection(section) === "plugin" && detail?.pluginTab) {
-          setPluginTab(detail.pluginTab);
-          setPluginNavigationOrigin(detail.pluginOrigin);
-        } else if (resolveSettingsSection(section) !== "plugin") {
-          setPluginNavigationOrigin(undefined);
-        }
-        if (section === "modelProvider" && detail?.modelProviderId) {
-          setPendingModelProviderTarget({
-            providerId: detail.modelProviderId,
-          });
-        }
+        const apply = () => {
+          setActiveSettingsSection(section, activeSection);
+          setSettingsSectionNavigationVersion((version) => version + 1);
+          setTargetSourceServerId(section === "remoteDevices" ? detail?.sourceServerId : undefined);
+          setTargetSourceServerDetails(
+            section === "remoteDevices" && detail?.sourceServerDetails === true,
+          );
+          if (section === "usage" && detail?.usageTab) setUsageActiveTab(detail.usageTab);
+          // MCP 独立分区也接收工作区意图，否则会话内审核会误落到用户配置。
+          setPluginScopeKey(detail?.pluginScopeKey);
+          setHookWorkspacePath(detail?.hookWorkspacePath);
+          if (resolveSettingsSection(section) === "plugin" && detail?.pluginTab) {
+            setPluginTab(detail.pluginTab);
+            setPluginNavigationOrigin(detail.pluginOrigin);
+          } else if (resolveSettingsSection(section) !== "plugin") {
+            setPluginNavigationOrigin(undefined);
+          }
+          if (section === "modelProvider" && detail?.imageGeneration) {
+            setPendingModelProviderTarget({ imageGeneration: true });
+          } else if (section === "modelProvider" && detail?.modelProviderId) {
+            setPendingModelProviderTarget({ providerId: detail.modelProviderId });
+          } else {
+            setPendingModelProviderTarget(undefined);
+          }
+        };
+        // 同一模型分区的节点跳转由节点 owner 检查，重复打开当前节点保留草稿。
+        if (resolveSettingsSection(section) === activeSection) apply();
+        else leaveModelDraft(apply);
       }),
-    [activeSection, setActiveSettingsSection],
+    [activeSection, leaveModelDraft, setActiveSettingsSection],
   );
 
   useEffect(() => {
@@ -1659,10 +1609,12 @@ export function SettingsPage({
                             trigger: "button",
                           },
                           operation: () => {
-                            if (pluginNavigationOrigin === "plugin-store") {
-                              requestPluginStoreOpen("user");
-                            }
-                            onBack?.();
+                            leaveModelDraft(() => {
+                              if (pluginNavigationOrigin === "plugin-store") {
+                                requestPluginStoreOpen("user");
+                              }
+                              onBack?.();
+                            });
                           },
                           completed: { resultSource: "local_commit" },
                           failureStage: "navigation_commit",
@@ -1779,7 +1731,7 @@ export function SettingsPage({
                   localeMenuValue={localePreference}
                   onLocaleChange={handleFooterLocaleChange}
                   onThemeChange={handleFooterThemeChange}
-                  onSettingsButtonClick={onBack}
+                  onSettingsButtonClick={onBack ? handleSettingsBack : undefined}
                   onUsageClick={handleOpenUsageSettings}
                   onLogin={onLogin}
                   onLogout={onLogout}
@@ -2180,11 +2132,6 @@ export function SettingsPage({
                           ) : activeSection === "modelProvider" ? (
                             <ServiceProvider services={localHostServices}>
                               {/* 模型配置属于本机全局事实源；激活远端 workspace 时也不能注入远端 Host。 */}
-                              {isDesktop && localHostServices.imageGenerationService ? (
-                                <GenImageModelSettings
-                                  service={localHostServices.imageGenerationService}
-                                />
-                              ) : null}
                               <ModelProviderSection
                                 workspacePath={activeWorkspacePath ?? captionWorkspacePath ?? ""}
                                 connectivityWorkspacePath={
@@ -2192,6 +2139,8 @@ export function SettingsPage({
                                 }
                                 connectivityWorkspaceRequired={isRemoteModelProviderWorkspace}
                                 pendingModelProviderTarget={pendingModelProviderTarget}
+                                onDraftDirtyChange={onModelDraftDirtyChange}
+                                onLeaveDraft={leaveModelDraft}
                                 onConsumePendingModelProviderTarget={() =>
                                   setPendingModelProviderTarget(undefined)
                                 }

@@ -11,9 +11,9 @@ interface ModelProviderSectionLayoutProps {
   loadingLabel: string;
   presetLoading: boolean;
   customLoading: boolean;
-  onRefresh: () => void;
+  onRefresh?: () => void;
   addProviderLabel: string;
-  onAddProvider: () => void;
+  onAddProvider?: () => void;
   navigationGroups: ModelProviderNavGroup[];
   selectedNodeKey: string | null;
   onSelectNavItem: (item: ModelProviderNavGroup["items"][number]) => void;

@@ -39,6 +39,7 @@ const SETTINGS_SECTION_INTENT_KEY = "zcode-settings-section-intent",
   SETTINGS_PLUGIN_SCOPE_KEY_INTENT_KEY = "zcode-settings-plugin-scope-key-intent";
 const SETTINGS_SOURCE_SERVER_ID_INTENT_KEY = "zcode-settings-source-server-id-intent";
 const SETTINGS_SOURCE_SERVER_DETAILS_INTENT_KEY = "zcode-settings-source-server-details-intent";
+const IMAGE_GENERATION_INTENT = "image-generation";
 const SETTINGS_MODEL_PROVIDER_ID_INTENT_KEY = "zcode-settings-model-provider-id-intent";
 const SETTINGS_HOOK_WORKSPACE_PATH_INTENT_KEY = "zcode-settings-hook-workspace-path-intent";
 const SETTINGS_SECTION_INTENT_EVENT = "zcode:settings-section-intent",
@@ -61,15 +62,14 @@ export interface SettingsSectionIntentEventDetail {
   pluginScopeKey?: string;
   usageTab?: SettingsUsageTabTarget;
   modelProviderId?: string;
+  imageGeneration?: true;
   sourceServerId?: string;
   sourceServerDetails?: boolean;
   /** 受管 worktree 任务「去审核」时的会话 cwd，钩子设置页按它发现声明（D23）。 */
   hookWorkspacePath?: string;
 }
 
-export interface SettingsModelProviderTarget {
-  providerId: string;
-}
+export type SettingsModelProviderTarget = { providerId: string } | { imageGeneration: true };
 
 function isSettingsSectionId(value: string): value is SettingsSectionId {
   return (
@@ -239,6 +239,7 @@ export function setPendingSettingsSectionIntent(
     pluginOrigin?: SettingsPluginNavigationOrigin;
     pluginScopeKey?: string;
     modelProviderId?: string;
+    imageGeneration?: true;
     sourceServerId?: string;
     sourceServerDetails?: boolean;
     usageTab?: SettingsUsageTabTarget;
@@ -289,7 +290,9 @@ export function setPendingSettingsSectionIntent(
     } else {
       window.sessionStorage.removeItem(SETTINGS_SOURCE_SERVER_DETAILS_INTENT_KEY);
     }
-    if (options.modelProviderId) {
+    if (section === "modelProvider" && options.imageGeneration) {
+      window.sessionStorage.setItem(SETTINGS_MODEL_PROVIDER_ID_INTENT_KEY, IMAGE_GENERATION_INTENT);
+    } else if (options.modelProviderId) {
       window.sessionStorage.setItem(SETTINGS_MODEL_PROVIDER_ID_INTENT_KEY, options.modelProviderId);
     } else {
       window.sessionStorage.removeItem(SETTINGS_MODEL_PROVIDER_ID_INTENT_KEY);
@@ -314,6 +317,7 @@ export function setPendingSettingsSectionIntent(
         pluginScopeKey: options.pluginScopeKey?.trim() || undefined,
         usageTab: options.usageTab,
         modelProviderId: options.modelProviderId,
+        imageGeneration: section === "modelProvider" ? options.imageGeneration : undefined,
         hookWorkspacePath,
         ...(section === "remoteDevices" && options.sourceServerId?.trim()
           ? {
@@ -479,6 +483,7 @@ export function consumePendingSettingsModelProviderTarget():
   try {
     const providerId = window.sessionStorage.getItem(SETTINGS_MODEL_PROVIDER_ID_INTENT_KEY);
     window.sessionStorage.removeItem(SETTINGS_MODEL_PROVIDER_ID_INTENT_KEY);
+    if (providerId === IMAGE_GENERATION_INTENT) return { imageGeneration: true };
     if (!providerId?.trim()) {
       return undefined;
     }
