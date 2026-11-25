@@ -34,6 +34,7 @@ import {
   IExtensionViewsService,
   IExtensionGrantsService,
   IImageGenerationService,
+  IToolModelSettingsService,
   IVoiceInputService,
   IUsageStatsService,
   ICodingPlanSubscriptionService,
@@ -120,6 +121,7 @@ export class RemoteServiceAccess implements IServiceAccessor {
   readonly extensionViewsService?: IExtensionViewsService;
   readonly extensionGrantsService?: IExtensionGrantsService;
   readonly imageGenerationService?: IImageGenerationService;
+  readonly toolModelSettingsService?: IToolModelSettingsService;
   readonly voiceInputService?: IVoiceInputService;
   readonly usageStatsService: IUsageStatsService;
   readonly codingPlanSubscriptionService: ICodingPlanSubscriptionService;
@@ -157,6 +159,8 @@ export class RemoteServiceAccess implements IServiceAccessor {
       sourceServerManagementService?: boolean;
       deviceSyncStateService?: boolean;
       extensionsService?: boolean;
+      imageGenerationService?: boolean;
+      toolModelSettingsService?: boolean;
       managedWorktreeService?: boolean;
       windowProjectDirectory?: boolean;
     } = {},
@@ -294,10 +298,15 @@ export class RemoteServiceAccess implements IServiceAccessor {
           channelClient.getChannel(IExtensionGrantsService.channelName),
         )
       : undefined;
-    // 应用级画布沿用同一个桌面 base 能力开关；远端/Web 不构造惰性代理。
-    this.imageGenerationService = options.extensionsService
+    // 内置生图与插件生命周期独立，只有声明能力的桌面 base 连接创建代理。
+    this.imageGenerationService = options.imageGenerationService
       ? ProxyChannel.toService<IImageGenerationService>(
           channelClient.getChannel(IImageGenerationService.channelName),
+        )
+      : undefined;
+    this.toolModelSettingsService = options.toolModelSettingsService
+      ? ProxyChannel.toService<IToolModelSettingsService>(
+          channelClient.getChannel(IToolModelSettingsService.channelName),
         )
       : undefined;
     this.providerProvisioningStatusService = options.deviceSyncStateService
@@ -352,8 +361,12 @@ export class RemoteServiceAccess implements IServiceAccessor {
       channelClient.getChannel(ICloudContentService.channelName),
     );
     this.marketingTouchService = {
-      async query() { throw new Error("commercial_service_unsupported:query"); },
-      async report() { throw new Error("commercial_service_unsupported:report"); },
+      async query() {
+        throw new Error("commercial_service_unsupported:query");
+      },
+      async report() {
+        throw new Error("commercial_service_unsupported:report");
+      },
     };
     this.offPeakTaskService = ProxyChannel.toService<IOffPeakTaskService>(
       channelClient.getChannel(IOffPeakTaskService.channelName),

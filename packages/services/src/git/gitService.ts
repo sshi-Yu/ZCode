@@ -1,5 +1,11 @@
 import { resolve } from "node:path";
-import type { GitBranchComparison, GitFileChange, GitChangeSectionId } from "@zcode/shared";
+import type {
+  GitBranchComparison,
+  GitFileChange,
+  GitChangeSectionId,
+  GitGenerateCommitMessageRequest,
+} from "@zcode/shared";
+import { buildGitCommitMessageGenerationPrompt } from "./gitCommitMessageGenerator.js";
 import { isPathInWorkspaceScope, normalizeGitPath, toWorkspaceRelativeGitPath } from "./config.js";
 import { filterCommitMessageFilesByCurrentSession } from "./commitMessageFileScope.js";
 import type { IGitService } from "./git.js";
@@ -167,9 +173,56 @@ function getCommitMessageDiffQueries(
   return queries;
 }
 
+export async function prepareGitCommitMessageInput(
+  params: GitGenerateCommitMessageRequest,
+  repo: GitCliRepo = createGitCliRepo(),
+) {
+  const includeUnstaged = params.includeUnstaged ?? true;
+  const status = await repo.getStatus(params.workspacePath);
+  const files = filterCommitMessageFilesByCurrentSession({
+    files: [
+      ...(includeUnstaged ? getChangesForSource(status, "unstaged") : []),
+      ...getChangesForSource(status, "staged"),
+    ],
+    workspacePath: params.workspacePath,
+    repoRoot: status.resolution.repoRoot,
+    workspaceInRepoPath: status.resolution.workspaceInRepoPath,
+    currentSessionFilePaths: params.currentSessionFilePaths,
+  });
+  if (files.length === 0) throw new Error("There are no changes available to commit.");
+  const diffResults = await Promise.allSettled(
+    getCommitMessageDiffQueries(files, includeUnstaged)
+      .slice(0, 8)
+      .map((query) =>
+        repo.getDiff({
+          workspacePath: params.workspacePath,
+          path: query.path,
+          sourceId: query.sourceId,
+        }),
+      ),
+  );
+  const diffs = diffResults.flatMap((result) =>
+    result.status === "fulfilled" && (result.value.patch || result.value.summary)
+      ? [result.value]
+      : [],
+  );
+  const input = {
+    workspacePath: params.workspacePath,
+    workspaceIdentity: params.workspaceIdentity,
+    locale: params.locale,
+    branchName: status.summary.branchName,
+    files,
+    diffs,
+    conversationContext: params.conversationContext,
+  };
+  return { ...input, preparedPrompt: buildGitCommitMessageGenerationPrompt(input) };
+}
+
 export function createGitService(options?: {
   repo?: GitCliRepo;
   commitMessageGenerator?: GitCommitMessageGenerator;
+  /** Host 私有装配，仅专用桌面工具服务传入，不从公共 Git RPC 请求读取。 */
+  modelOverride?: Parameters<GitCommitMessageGenerator["generate"]>[0]["modelOverride"];
 }): IGitService {
   const repo = options?.repo ?? createGitCliRepo();
 
@@ -256,45 +309,9 @@ export function createGitService(options?: {
         throw new Error("Commit message generation is not available.");
       }
 
-      const includeUnstaged = (params as { includeUnstaged?: boolean }).includeUnstaged ?? true;
-      const status = await repo.getStatus(params.workspacePath);
-      const unstagedChanges = includeUnstaged ? getChangesForSource(status, "unstaged") : [];
-      const stagedChanges = getChangesForSource(status, "staged");
-      const files = filterCommitMessageFilesByCurrentSession({
-        files: [...unstagedChanges, ...stagedChanges],
-        workspacePath: params.workspacePath,
-        repoRoot: status.resolution.repoRoot,
-        workspaceInRepoPath: status.resolution.workspaceInRepoPath,
-        currentSessionFilePaths: params.currentSessionFilePaths,
-      });
-      if (files.length === 0) {
-        throw new Error("There are no changes available to commit.");
-      }
-
-      const diffQueries = getCommitMessageDiffQueries(files, includeUnstaged);
-      const diffResults = await Promise.allSettled(
-        diffQueries.map((query) =>
-          repo.getDiff({
-            workspacePath: params.workspacePath,
-            path: query.path,
-            sourceId: query.sourceId,
-          }),
-        ),
-      );
-      const diffs = diffResults.flatMap((result) =>
-        result.status === "fulfilled" && (result.value.patch || result.value.summary)
-          ? [result.value]
-          : [],
-      );
-
       return await options.commitMessageGenerator.generate({
-        workspacePath: params.workspacePath,
-        ...(params.workspaceIdentity ? { workspaceIdentity: params.workspaceIdentity } : {}),
-        ...(params.locale ? { locale: params.locale } : {}),
-        branchName: status.summary.branchName,
-        files,
-        diffs,
-        ...(params.conversationContext ? { conversationContext: params.conversationContext } : {}),
+        ...(await prepareGitCommitMessageInput(params, repo)),
+        ...(options.modelOverride ? { modelOverride: options.modelOverride } : {}),
       });
     },
 

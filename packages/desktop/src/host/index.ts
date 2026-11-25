@@ -67,6 +67,7 @@ import {
   IExtensionViewsService,
   IExtensionGrantsService,
   IImageGenerationService,
+  type IToolModelSettingsService,
   IPluginManagementService,
   IWindowControllerService,
   IConversationShareService,
@@ -1427,6 +1428,7 @@ let activeServices: ServiceCollection | null = null;
 let windowHostExtensions: WindowHostExtensions | null = null;
 // 生图仅有本机桌面发布点，不放入自动暴露的通用 ServiceCollection。
 let windowHostImageGenerationService: IImageGenerationService | undefined;
+let windowHostToolModelSettingsService: IToolModelSettingsService | undefined;
 /**
  * Main 推送的实时界面语言，供 ZCode endpoint 请求的 X-Client-Language。
  * 过去 Host 用进程 Intl locale（Dock 启动无 LANG 会回退 en-US）；setting.json 写入可能滞后或失败，
@@ -2480,6 +2482,7 @@ function exposeServicesOnMessagePort(
     attachmentScope,
     windowServices: activeServices ?? undefined,
     imageGenerationService: windowHostImageGenerationService,
+    toolModelSettingsService: windowHostToolModelSettingsService,
     ...(isWebRemoteAttachment
       ? { decorateWindowProjectService: webRemoteProjectTreeActivity.decorate }
       : {}),
@@ -2617,6 +2620,7 @@ async function disposeHostResources(reason: string): Promise<HostShutdownResult>
     windowHostExtensions?.dispose();
     windowHostExtensions = null;
     windowHostImageGenerationService = undefined;
+    windowHostToolModelSettingsService = undefined;
     stopHostNetworkTelemetry();
     hostNetworkCapture.setCaptureId(null);
     hostSelfResourceTelemetry.stop();
@@ -2710,6 +2714,7 @@ function disposeHostResourcesBestEffort(reason: string): void {
   windowHostExtensions?.dispose();
   windowHostExtensions = null;
   windowHostImageGenerationService = undefined;
+  windowHostToolModelSettingsService = undefined;
   stopHostNetworkTelemetry();
   hostNetworkCapture.setCaptureId(null);
   disposeLocalResourceTelemetry();
@@ -3658,6 +3663,9 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
                   productFlavor: ZCODE_PRODUCT_FLAVOR,
                 }),
               }),
+              onToolModelSettingsServiceCreated: (service) => {
+                windowHostToolModelSettingsService = service;
+              },
               onAppControlServiceCreated: (handle) => {
                 appControlForExtensions = handle;
               },

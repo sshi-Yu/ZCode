@@ -345,8 +345,10 @@ function initializeBusinessRoot(port: MessagePort): void {
     sourceServerManagementService: true,
     deviceSyncStateService: true,
     managedWorktreeService: true,
-    // 扩展与应用级生图门面只在桌面本机 Host 注册；不向 scoped remote port 创建代理。
+    // 两个能力各自在桌面 base 连接声明，避免 scoped remote port 构造不存在的通道。
     extensionsService: true,
+    imageGenerationService: true,
+    toolModelSettingsService: true,
   });
   baseServicesForRemoteSessions = services;
   registerBaseWorkspaceServices(services);

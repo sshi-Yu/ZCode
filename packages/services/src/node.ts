@@ -47,6 +47,9 @@ export type {
 } from "#src/app-control/contract.js";
 export { createRemoteProjectService } from "#src/remote-projects/index.js";
 import { getZCodeDataRootDir as projectDataRoot } from "#src/paths.js";
+import { createToolModelSettingsService } from "./tool-model-settings/node.js";
+import type { IToolModelSettingsService } from "./tool-model-settings/contract.js";
+import { createModelExecutionFingerprint } from "@zcode/provider-node";
 import { getDataBaseDir } from "#src/paths.js";
 import { createGitWorktreeRepo } from "#src/git/managed-worktree/index.js";
 import { createGitCommandProvider } from "#src/git/providers/gitCommandProvider.js";
@@ -472,7 +475,7 @@ import { IPromptAttachmentTransferService } from "./prompt-attachment-transfer/p
 import { createFileService } from "./file/fileService.js";
 import { createMediaPreviewService } from "./media-preview/mediaPreview.js";
 import type { WorkspaceFileSearchFilter } from "./file/workspaceFileMentionFilter.js";
-import { createGitService } from "./git/gitService.js";
+import { createGitService, prepareGitCommitMessageInput } from "./git/gitService.js";
 import { GitCommitMessageGenerator } from "./git/gitCommitMessageGenerator.js";
 import { createGitCheckpointService } from "./git/gitCheckpointService.js";
 import { getWorkspaceCheckpointDirectory } from "./git/repo/gitCheckpointStore.js";
@@ -1371,6 +1374,8 @@ export function createLocalServices(options: {
    * docs/plugins/extension-host.md §17.2）。它不注册进 ServiceCollection，也不在任何 RPC 频道上。
    */
   onAppControlServiceCreated?: (handle: AppControlServiceHandle) => void;
+  /** 仅本机桌面装配；不注册通用服务集合，不下发远端或手机。 */
+  onToolModelSettingsServiceCreated?: (service: IToolModelSettingsService) => void;
   /** browser-use 执行桥（host→main WebContentsView+CDP）；desktop host 注入，缺省则 browser 不可用。 */
   browserControlExecutor?: {
     list(input: {
@@ -2460,16 +2465,14 @@ export function createLocalServices(options: {
       ? { accountProviderConfigSource: agentAccountProviderConfigSource }
       : {}),
     accountRequestAuthService,
-    readRequestVerificationConfig: () =>
-      runtimeConfigService.getRequestVerificationConfig(),
+    readRequestVerificationConfig: () => runtimeConfigService.getRequestVerificationConfig(),
     ...(modelSelectionReadinessSource ? { modelSelectionReadinessSource } : {}),
     authorizeLocalMediaPreviewPath: options?.authorizeLocalMediaPreviewPath,
     ...offPeakToolWiring,
     // 动态工作流灰度：与 Off-Peak 不同，
     // 这里不按 serviceAuthorityMode 裁剪——SSH/WSL/Docker 的 desktop-attached-remote Host
     // 是它自己那些 workspace 的唯一裁决者，灰度开启时远程 workspace 同样提供工作流。
-    resolveDynamicWorkflowClientConfig: () =>
-      runtimeConfigService.getDynamicWorkflowClientConfig(),
+    resolveDynamicWorkflowClientConfig: () => runtimeConfigService.getDynamicWorkflowClientConfig(),
     ...(resolveDynamicWorkflowUserMode ? { resolveDynamicWorkflowUserMode } : {}),
     forwardDynamicWorkflowUserMode: options?.forwardDynamicWorkflowUserMode,
     commandResolver: options?.zcodeAgentCommandResolver,
@@ -2760,6 +2763,9 @@ export function createLocalServices(options: {
           selection: params.selection,
           prompt: params.prompt,
           querySource: params.querySource,
+          ...(params.expectedModelFingerprint
+            ? { expectedModelFingerprint: params.expectedModelFingerprint }
+            : {}),
         });
       },
     },
@@ -2768,6 +2774,69 @@ export function createLocalServices(options: {
   const gitService = createGitService({
     commitMessageGenerator: gitCommitMessageGenerator,
   });
+  if (
+    options.onToolModelSettingsServiceCreated &&
+    (!options.projectStorageHostId || options.projectStorageHostId === "local") &&
+    !isDesktopAttachedRemote
+  ) {
+    options.onToolModelSettingsServiceCreated(
+      createToolModelSettingsService({
+        appConfigDir: resolveAppConfigDir(),
+        readModels: () => providerRuntime.modelSelection.getView(),
+        async resolveModel(reference) {
+          await providerRuntime.start();
+          const provider = providerRuntime.registryService.getProvider(reference.providerId);
+          const model = providerRuntime.registryService.getModel(
+            reference.providerId,
+            reference.modelId,
+          );
+          if (!provider || !model || !model.config.properties.outputFormat.supportsText) {
+            throw Object.assign(new Error("tool-model.model-unavailable"), {
+              code: "tool-model.model-unavailable",
+            });
+          }
+          const reasoningLevel = model.config.optionSpecs.reasoningLevel.values[0];
+          if (!reasoningLevel)
+            throw Object.assign(new Error("tool-model.model-unavailable"), {
+              code: "tool-model.model-unavailable",
+            });
+          return {
+            selection: { ...reference, options: { reasoningLevel } },
+            fingerprint: createModelExecutionFingerprint(provider, model),
+          };
+        },
+        async validateGitTarget(request) {
+          const meta = await taskIndexRepo.getTaskMeta({
+            workspacePath: request.sessionWorkspacePath,
+            taskId: request.sessionId,
+          });
+          if (
+            !meta ||
+            meta.workspaceIdentity?.trim() ||
+            (meta.sourceServerId && meta.sourceServerId !== "local") ||
+            meta.workspacePath !== request.sessionWorkspacePath ||
+            (meta.cwd || meta.workspacePath) !== request.workspacePath
+          ) {
+            throw Object.assign(new Error("tool-model.reconfirm-required"), {
+              code: "tool-model.reconfirm-required",
+            });
+          }
+        },
+        prepareGitPrompt: async (request) =>
+          (await prepareGitCommitMessageInput(request)).preparedPrompt,
+        generateGit: (request, modelOverride, preparedPrompt) =>
+          gitCommitMessageGenerator.generate({
+            workspacePath: request.workspacePath,
+            locale: request.locale,
+            branchName: null,
+            files: [],
+            diffs: [],
+            preparedPrompt,
+            modelOverride,
+          }),
+      }),
+    );
+  }
   // 终端实例需要同时注册给 renderer 与供 worktree 删除前的占用检查使用，必须是同一个实例。
   const terminalService = createTerminalService({
     settingService,
@@ -3078,10 +3147,7 @@ export function createLocalServices(options: {
     )
     .register(ICodingPlanSubscriptionService, codingPlanSubscriptionService)
     .register(IRuntimeConfigService, runtimeConfigService)
-    .register(
-      IAccountModelProjectsService,
-      accountModelProjectsService,
-    )
+    .register(IAccountModelProjectsService, accountModelProjectsService)
     .register(
       IClientConfigService,
       createClientConfigService({

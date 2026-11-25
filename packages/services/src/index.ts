@@ -248,7 +248,10 @@ export { IFileWatcherService } from "./fileWatcher/fileWatcher.js";
 export { IOAuthService } from "./oauth/oauth.js";
 
 // UsageStats service — IUsageStatsService is both a type (interface) and value (descriptor)
-export { IUsageStatsService, createRetiredCodingPlanResetMethods } from "./usage-stats/usageStats.js";
+export {
+  IUsageStatsService,
+  createRetiredCodingPlanResetMethods,
+} from "./usage-stats/usageStats.js";
 
 // Storage（资源管理器「存储」tab）：数据类型在 @zcode/shared；这里只导出服务接口与卷分组纯函数
 // StorageRootSpec 随契约再导出：desktop 的 Worker 协议按 contract.ts 的口径只从 services 入口取类型。
@@ -264,9 +267,7 @@ export {
 export { IRuntimeConfigService } from "./runtime-config/contract.js";
 export type { IRuntimeConfigService as RuntimeConfigServiceType } from "./runtime-config/contract.js";
 export { IAccountModelProjectsService } from "./account-model-projects/contract.js";
-export type {
-  IAccountModelProjectsService as AccountModelProjectsServiceType,
-} from "./account-model-projects/contract.js";
+export type { IAccountModelProjectsService as AccountModelProjectsServiceType } from "./account-model-projects/contract.js";
 export {
   IClientScenesService,
   type ClientSceneConfig,
@@ -292,7 +293,8 @@ export {
   IExtensionViewsService,
   type ExtensionsContributionsMessage,
 } from "./extensions/index.js";
-export { IImageGenerationService, type ImageGenerationJob } from "./image-generation/index.js";
+export * from "./image-generation/index.js";
+export * from "./tool-model-settings/contract.js";
 export { IVoiceInputService } from "./voice-input/index.js";
 export type { VoiceInputErrorCode, VoiceInputEvent } from "./voice-input/index.js";
 export { IMcpSyncService } from "./mcp-sync/mcpSync.js";

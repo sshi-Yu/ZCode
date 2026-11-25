@@ -34,6 +34,7 @@ export interface GitCommitMessageTextGenerator {
     selection: ZCodeWorkspaceGenerateTextParams["selection"];
     prompt: string;
     querySource: string;
+    expectedModelFingerprint?: string;
   }): Promise<{ text: string; selection: ZCodeWorkspaceGenerateTextParams["selection"] }>;
 }
 
@@ -65,15 +66,23 @@ export class GitCommitMessageGenerator {
     files: readonly GitFileChange[];
     diffs: readonly GitDiffResult[];
     conversationContext?: GitCommitMessageConversationContext;
+    modelOverride?: {
+      selection: ZCodeWorkspaceGenerateTextParams["selection"];
+      fingerprint: string;
+    };
+    /** Host 准备确认时生成的有界不可变输入；不从公共 Git RPC 接收。 */
+    preparedPrompt?: string;
   }): Promise<{ message: string; providerId: string; model: string }> {
-    const selection = await this.resolveCurrentModel(params);
-    const prompt = buildGitCommitMessageGenerationPrompt({
-      branchName: params.branchName,
-      locale: params.locale,
-      files: params.files,
-      diffs: params.diffs,
-      conversationContext: params.conversationContext,
-    });
+    const selection = params.modelOverride?.selection ?? (await this.resolveCurrentModel(params));
+    const prompt =
+      params.preparedPrompt ??
+      buildGitCommitMessageGenerationPrompt({
+        branchName: params.branchName,
+        locale: params.locale,
+        files: params.files,
+        diffs: params.diffs,
+        conversationContext: params.conversationContext,
+      });
 
     this.options.logger?.info(undefined, "开始生成 Git 提交消息", {
       workspacePath: params.workspacePath,
@@ -91,6 +100,9 @@ export class GitCommitMessageGenerator {
       workspaceIdentity: params.workspaceIdentity,
       selection,
       prompt,
+      ...(params.modelOverride
+        ? { expectedModelFingerprint: params.modelOverride.fingerprint }
+        : {}),
     });
     const validation = validateGeneratedGitCommitMessage(rawMessage);
     if (!validation.ok) {
@@ -149,6 +161,7 @@ export class GitCommitMessageGenerator {
     workspaceIdentity?: string;
     selection: ZCodeWorkspaceGenerateTextParams["selection"];
     prompt: string;
+    expectedModelFingerprint?: string;
   }): Promise<string> {
     try {
       const result = await this.options.textGenerator.generateText({
@@ -157,9 +170,23 @@ export class GitCommitMessageGenerator {
         selection: params.selection,
         prompt: params.prompt,
         querySource: COMMIT_MESSAGE_QUERY_SOURCE,
+        ...(params.expectedModelFingerprint
+          ? { expectedModelFingerprint: params.expectedModelFingerprint }
+          : {}),
       });
       return normalizeModelText(result.text);
     } catch (error) {
+      const protocolData =
+        error && typeof error === "object" && "data" in error ? error.data : undefined;
+      const businessCode =
+        protocolData && typeof protocolData === "object" && "code" in protocolData
+          ? protocolData.code
+          : undefined;
+      if (businessCode === "tool-model.reconfirm-required") {
+        throw Object.assign(new Error("tool-model.reconfirm-required"), {
+          code: "tool-model.reconfirm-required",
+        });
+      }
       if (error instanceof GitCommitMessageGenerationError) {
         throw error;
       }
@@ -172,7 +199,7 @@ export class GitCommitMessageGenerator {
   }
 }
 
-function buildGitCommitMessageGenerationPrompt(params: {
+export function buildGitCommitMessageGenerationPrompt(params: {
   branchName: string | null;
   locale?: Locale;
   files: readonly GitFileChange[];

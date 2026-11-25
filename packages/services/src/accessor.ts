@@ -64,6 +64,7 @@ import type { ISourceServerWorkspaceService } from "./source-server-workspace/so
 import type { ISourceServerManagementService } from "./source-server-management/sourceServerManagement.js";
 import type { IOnboardingRecordService } from "./onboarding/onboardingRecord.js";
 import type { IConversationShareService } from "./conversation-share/conversationShare.js";
+import type { IToolModelSettingsService } from "./tool-model-settings/contract.js";
 import type { IImageGenerationService } from "./image-generation/index.js";
 
 /** UI 层消费的统一服务接口 */
@@ -118,6 +119,8 @@ export interface IServiceAccessor {
   readonly extensionGrantsService?: IExtensionGrantsService;
   /** 仅本机桌面 base attachment：应用级生图配置、任务与原图；远端和手机不提供。 */
   readonly imageGenerationService?: IImageGenerationService;
+  /** 仅本机桌面 base attachment，工具绑定不经通用 Setting 或远端 Git 发布。 */
+  readonly toolModelSettingsService?: IToolModelSettingsService;
   /** 语音输入；只在桌面 base 连接存在 */
   readonly voiceInputService?: IVoiceInputService;
   readonly usageStatsService: IUsageStatsService;
