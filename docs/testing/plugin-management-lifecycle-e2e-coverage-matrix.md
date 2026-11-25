@@ -1,8 +1,30 @@
 # Plugin Management Lifecycle E2E Coverage Matrix
 
-## PLM-GENIMAGE-WORKSPACE
+## 内置生图 BI01–BI11（2026-11-25）
 
-GI01–GI03 为应用级生图候选，保留 `manual-review/pending`，未做人工晋级或 Docker/CI admission。桌面路径 `packages/desktop/test/e2e/plugins/extensions/manual-review/pending/plugin-management-genimage-workspace.test.ts`。Windows x64 验收使用隔离 profile、实际市场产物与回环 Images 夹具；E2E 以 inline seed 加载市场产物，不等于市场安装 UI 验收，也未调用付费服务。
+候选仍处于 **manual review pending**。验收标准和完整 setup 见[目录](../plugin-management-lifecycle-case-catalog.md#内置生图-bi01bi11计划中)及[设计](../superpowers/specs/2026-11-25-builtin-image-generation-model-settings-design.md#8-验收矩阵与评审边界)。P0 表示冒烟优先级。以下结果注明当次运行的覆盖边界。
+
+| ID   | 优先级 | 当前验证结果及缺口                                                                                                              | 状态     |
+| ---- | ------ | ------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| BI01 | P0     | Windows 原生工作台在无插件、无会话时可打开。切项目、远端、Web／手机发布边界待验                                                 | 部分通过 |
+| BI02 | P0     | Windows 验证双栏深链、临时模型复位、保存零请求、侧栏命令与原生菜单草稿门禁。系统级快捷键、Quick Pick 结果跳转、窄窗与两主题待验 | 部分通过 |
+| BI03 | P0     | 本机 Host 回环验证 v1 备份、迁移、26 条记录稳定分页和原图字节。旧活跃写入者升级及降级恢复待验                                   | 部分通过 |
+| BI04 | P0     | 两个 Host 服务实例回环验证 CAS、旧修订零请求、图片凭据隔离。桌面双窗交互待验                                                    | 部分通过 |
+| BI05 | P0     | Windows 验证键盘取消零请求、单次确认和断连未知。本机 Host 回环验证探测与试生成。桌面探测和试生成交互待验                        | 部分通过 |
+| BI06 | P0     | Windows 验证取消保存、导出字节一致和终态冷重启。本机 Host 回环验证同 ID 重放与单飞。等待中冷重启待验                            | 部分通过 |
+| BI07 | P1     | Git 已验证取消零请求、确认一次生成只回填且 HEAD 不变，见 [Git 验收记录](git-commit-dialog-e2e-coverage.md)。自动标题暂不开放    | 部分通过 |
+| BI08 | P0     | Windows 验证隔离 profile 写入旧插件安装配置后，入口仍由原生工作台承载，每次确认只有一次 POST。旧插件加载、启停与旧会话卡待验    | 部分通过 |
+| BI09 | P1     | 已核对文档，严格合成传输和 Windows Base64 设置保存重开通过；真实 Key 的权限验证与付费试生成未进行，见设计 §7                    | 部分通过 |
+| BI10 | P0     | 本机 Host 验证迟到探测和发送后断连。注入式路由检查覆盖官方代理、No Proxy 与受限目标。重定向及异常 2xx 的桌面回归待验            | 部分通过 |
+| BI11 | P1     | 本机工具服务回环验证接收方、diff、会话、绑定修订变化及令牌重放均不增加模型请求。桌面确认执行和手机标题对照见后续验收            | 部分通过 |
+
+Windows 隔离回放 `packages/desktop/.e2e-artifacts/genimage-native-20261125-qa08/test-results.ndjson` 记录 **12/12 通过、零重试**。候选位于 `packages/desktop/test/e2e/workspace/image-generation/manual-review/pending/image-generation-workspace.test.ts`。三次回环 POST 均发生在明确确认后；配置保存、草稿取消和重启不增加请求。原生菜单断言激活真实 Electron 菜单项并保留 IPC，仅替代目录选择结果：新建取消不切换标签或会话，原生菜单和 Quick Pick 均在目录取消时保留草稿，选中目录后取消放弃也不切换工作区。这不验证操作系统捕获 Ctrl+N／Ctrl+O 的行为。Base64 设置断言检查切换时清除不兼容尺寸和背景、保留质量，确认目的地后保存，重开保持 2048 方形且不回填 Key。
+
+`qa06` 通过此前 11 项；`qa07` 的键盘注入没有触发可观察的原生桌面命令，新增用例在确认前停止，其余依赖用例不计为通过；`qa05` 因测试构建缺桥接未启动。候选尚待人工审核与 CI 准入。
+
+## PLM-GENIMAGE-WORKSPACE（历史插件 App）
+
+GI01–GI03 是被取代的插件 App 主区合同。历史候选路径 `packages/desktop/test/e2e/plugins/extensions/manual-review/pending/plugin-management-genimage-workspace.test.ts` 已被原生候选替代，不代表当前可运行入口；未做人工晋级或 Docker/CI admission。Windows x64 历史验收使用隔离 profile、实际市场产物与回环 Images 夹具；E2E 以 inline seed 加载市场产物，不等于市场安装 UI 验收，也未调用付费服务。
 
 - 最终完整运行 `packages/desktop/.e2e-artifacts/desktop-e2e-20261124-092516-829`：1 passed，`test-results.ndjson` 记录 159,930ms、无重试。覆盖无会话 app 主区、未配置禁用、设置返回生图、Enter 取消零请求、真实 SDK 至少 59 秒等待取消零请求、显式确认单次固定模型请求、原图导出字节一致、首次冷重启恢复同一资产且请求数为 1、第二次发送后断连的 `outcome_unknown`、第二次冷重启恢复成功与未知两条记录且请求数严格为 2，聊天默认模型前后不变。等待期间仅对当前 E2E 进程中按 Renderer URL 匹配的唯一窗口设置 `setIgnoreMouseEvents(true)`，`finally` 恢复；guest 选中使用标准 DOM 焦点事件、保存对话框返回隔离目标，不代表原生焦点/鼠标或人工选择文件路径通过。GI02/GI03 的本地回环业务链通过；GI01 跨项目部分仍未覆盖。
 
