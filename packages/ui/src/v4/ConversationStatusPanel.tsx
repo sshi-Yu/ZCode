@@ -208,6 +208,7 @@ export function StatusCapsule({
   tone,
   attention = false,
   dataAttributes,
+  keepOpenForModal = false,
 }: {
   id: string;
   label: ReactNode;
@@ -217,6 +218,7 @@ export function StatusCapsule({
   tone?: "warning" | "destructive";
   attention?: boolean;
   dataAttributes?: Record<`data-${string}`, string | number | undefined>;
+  keepOpenForModal?: boolean;
 }) {
   const shared = useContext(StatusCapsuleContext);
   const hideLabel = shared?.hiddenLabels.includes(id) ?? false;
@@ -237,7 +239,12 @@ export function StatusCapsule({
   return (
     <Popover
       open={open}
-      onOpenChange={(next) => (shared ? shared.setOpen(next ? id : null) : setLocalOpen(next))}
+      onOpenChange={(next) => {
+        // Git 对话框挂在胶囊子树，独立确认 Portal 的外部事件不能卸载其草稿 owner。
+        if (!next && keepOpenForModal) return;
+        if (shared) shared.setOpen(next ? id : null);
+        else setLocalOpen(next);
+      }}
     >
       <PopoverTrigger asChild>
         <Button
@@ -311,6 +318,8 @@ export function StatusCapsule({
 
 export interface ConversationStatusPanelProps {
   workspacePath: string;
+  sessionId?: string;
+  remoteSessionId?: string;
   /** Git 操作所在目录；worktree 任务是会话 cwd，缺省为 workspacePath（docs/git/worktree.md §3.7）。 */
   gitCwd?: string;
   workspaceIdentity?: string;
@@ -1010,6 +1019,7 @@ function ConversationStatusPanelImpl(props: ConversationStatusPanelProps) {
   const capsuleContext = useContext(StatusCapsuleContext);
   const isOfficeMode = useIsOfficeMode();
   const repository = useContext(GitStatusRepositoryContext);
+  const [gitModalOpen, setGitModalOpen] = useState(false);
   const {
     workspacePath,
     gitCwd,
@@ -1457,6 +1467,7 @@ function ConversationStatusPanelImpl(props: ConversationStatusPanelProps) {
       {canGit ? (
         <StatusCapsule
           id="git"
+          keepOpenForModal={gitModalOpen}
           icon={<FileDiffIcon className="size-4" />}
           label={intl.formatMessage(
             { id: "chat.capsule.files" },
@@ -1554,6 +1565,10 @@ function ConversationStatusPanelImpl(props: ConversationStatusPanelProps) {
               {onRefreshGit ? (
                 <GitActionMenu
                   workspacePath={gitCwd ?? workspacePath}
+                  sessionWorkspacePath={workspacePath}
+                  sessionId={props.sessionId}
+                  onModalOpenChange={setGitModalOpen}
+                  remoteSessionId={props.remoteSessionId}
                   workspaceIdentity={workspaceIdentity}
                   gitSummary={gitSummary}
                   activeTaskChangeSummary={props.activeTaskChangeSummary ?? null}

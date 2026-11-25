@@ -46,6 +46,7 @@ import {
   getCurrentSessionFilePaths,
 } from "@/git-action-menu/currentSessionFileScope.js";
 import { useServices } from "@/hooks/useServices.js";
+import { formatToolModelError, useGitToolModelGeneration } from "@/hooks/useGitActions.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { getErrorMessage } from "@/lib/errorMessage.js";
 import { runUserAction } from "@/lib/userActionTelemetry.js";
@@ -65,10 +66,14 @@ import {
 interface GitActionMenuProps {
   workspacePath: string;
   workspaceIdentity?: string;
+  sessionId?: string;
+  sessionWorkspacePath?: string;
+  remoteSessionId?: string;
   gitSummary: GitRepositorySummary;
   activeTaskChangeSummary?: ZCodeTaskChangeSummary | null;
   commitMessageConversationContext?: GitCommitMessageConversationContext | null;
   onRefreshGit: () => void;
+  onModalOpenChange?: (open: boolean) => void;
   className?: string;
   triggerIconOnly?: boolean;
   triggerLayout?: "header" | "status-row";
@@ -382,6 +387,13 @@ function GitCommitDialog({
         data-testid={TID_GIT_COMMIT_DIALOG}
         showCloseButton={false}
         className="max-w-md gap-0 overflow-hidden border-popover-border bg-popover p-0 shadow-lg"
+        onEscapeKeyDown={(event) => {
+          // 工具确认由独立 Host Portal 挂载；同一次 Escape 不能再关闭底层提交草稿。
+          if (generationPending) event.preventDefault();
+        }}
+        onInteractOutside={(event) => {
+          if (generationPending) event.preventDefault();
+        }}
         onOpenAutoFocus={(event) => {
           if (!loading && state && !actionPending) {
             event.preventDefault();
@@ -822,10 +834,14 @@ function GitPushDialog({
 export function GitActionMenu({
   workspacePath,
   workspaceIdentity,
+  sessionId,
+  sessionWorkspacePath,
+  remoteSessionId,
   gitSummary,
   activeTaskChangeSummary = null,
   commitMessageConversationContext = null,
   onRefreshGit,
+  onModalOpenChange,
   className,
   triggerIconOnly = false,
   triggerLayout = "header",
@@ -838,8 +854,40 @@ export function GitActionMenu({
   const [commitMessage, setCommitMessage] = useState("");
   const [commitError, setCommitError] = useState<string | null>(null);
   const [commitIncludeUnstaged, setCommitIncludeUnstaged] = useState(true);
+  const generationScope = useMemo(
+    () => ({
+      workspacePath,
+      workspaceIdentity,
+      sessionId,
+      sessionWorkspacePath,
+      remoteSessionId,
+      commitMessageConversationContext,
+      commitIncludeUnstaged,
+      activeTaskChangeSummary,
+    }),
+    [
+      workspacePath,
+      workspaceIdentity,
+      sessionId,
+      sessionWorkspacePath,
+      remoteSessionId,
+      commitMessageConversationContext,
+      commitIncludeUnstaged,
+      activeTaskChangeSummary,
+    ],
+  );
+  const generateWithToolModel = useGitToolModelGeneration(generationScope, commitDialogOpen, {
+    sessionId,
+    sessionWorkspacePath,
+    workspaceIdentity,
+    remoteSessionId,
+  });
   const [commitMessageGenerationPending, setCommitMessageGenerationPending] = useState(false);
   const [pushDialogOpen, setPushDialogOpen] = useState(false);
+  useEffect(() => {
+    onModalOpenChange?.(commitDialogOpen || pushDialogOpen);
+    return () => onModalOpenChange?.(false);
+  }, [commitDialogOpen, onModalOpenChange, pushDialogOpen]);
   const [pushError, setPushError] = useState<string | null>(null);
   const [mutationPending, setMutationPending] = useState(false);
 
@@ -987,7 +1035,7 @@ export function GitActionMenu({
   }, [loadCommitDialogState, onRefreshGit]);
 
   const generateCommitMessage = useCallback(
-    async (state: GitCommitDialogState, includeUnstaged: boolean): Promise<string> => {
+    async (state: GitCommitDialogState, includeUnstaged: boolean) => {
       const files = getCommitDialogFiles(state, includeUnstaged);
       const currentSessionFilePaths = getCurrentSessionFilePaths(state.activeTaskChangeSummary);
       logger.info("[GitActionMenu] 开始生成提交消息", {
@@ -999,7 +1047,7 @@ export function GitActionMenu({
         conversationMessageCount: commitMessageConversationContext?.messages.length ?? 0,
       });
 
-      const result = await gitService.generateCommitMessage({
+      const result = await generateWithToolModel({
         workspacePath,
         ...(workspaceIdentity ? { workspaceIdentity } : {}),
         locale,
@@ -1010,17 +1058,18 @@ export function GitActionMenu({
           : {}),
       });
 
+      if (!result) return null;
       logger.info("[GitActionMenu] 提交消息生成成功", {
         workspacePath,
         branchName: gitSummary.branchName,
         providerId: result.providerId,
         model: result.model,
       });
-      return result.message;
+      return result;
     },
     [
       commitMessageConversationContext,
-      gitService,
+      generateWithToolModel,
       gitSummary.branchName,
       locale,
       workspaceIdentity,
@@ -1051,7 +1100,7 @@ export function GitActionMenu({
         commitDialogState,
         commitIncludeUnstaged,
       );
-      setCommitMessage(nextCommitMessage);
+      if (nextCommitMessage) setCommitMessage(nextCommitMessage.message);
     } catch (error: unknown) {
       const message = getErrorMessage(error);
       logger.warn("[GitActionMenu] 生成提交消息失败", {
@@ -1060,9 +1109,10 @@ export function GitActionMenu({
         error: message,
       });
       setCommitError(
-        intl.formatMessage({
-          id: "git.actionMenu.commitDialog.error.generateFailed",
-        }),
+        formatToolModelError(error, locale) ??
+          intl.formatMessage({
+            id: "git.actionMenu.commitDialog.error.generateFailed",
+          }),
       );
     } finally {
       setCommitMessageGenerationPending(false);
@@ -1073,6 +1123,7 @@ export function GitActionMenu({
     generateCommitMessage,
     gitSummary.branchName,
     intl,
+    locale,
     workspacePath,
   ]);
 
@@ -1136,8 +1187,12 @@ export function GitActionMenu({
         setCommitError(null);
         setCommitMessageGenerationPending(true);
         try {
-          nextCommitMessage = await generateCommitMessage(commitDialogState, includeUnstaged);
+          const generated = await generateCommitMessage(commitDialogState, includeUnstaged);
+          if (!generated) return;
+          nextCommitMessage = generated.message;
           setCommitMessage(nextCommitMessage);
+          // 显式模型覆盖会把 diff/会话上下文发给另一接入方，确认只授权生成；检查草稿后另行提交。
+          if (generated.requiresReview) return;
         } catch (error: unknown) {
           const message = getErrorMessage(error);
           logger.warn("[GitActionMenu] 生成提交消息失败", {
@@ -1146,9 +1201,10 @@ export function GitActionMenu({
             error: message,
           });
           setCommitError(
-            intl.formatMessage({
-              id: "git.actionMenu.commitDialog.error.generateFailed",
-            }),
+            formatToolModelError(error, locale) ??
+              intl.formatMessage({
+                id: "git.actionMenu.commitDialog.error.generateFailed",
+              }),
           );
           return;
         } finally {
@@ -1236,6 +1292,7 @@ export function GitActionMenu({
       gitService,
       gitSummary.branchName,
       intl,
+      locale,
       onRefreshGit,
       pushCurrentBranch,
       workspacePath,

@@ -6207,6 +6207,8 @@ export function SessionPane({
   const statusCapsules = !isDraft ? (
     <ConversationStatusPanel
       workspacePath={workspacePath}
+      sessionId={sessionId ?? undefined}
+      remoteSessionId={remoteSessionId ?? undefined}
       gitCwd={sessionCwd}
       workspaceIdentity={workspaceIdentity}
       gitSummary={gitSummary}
