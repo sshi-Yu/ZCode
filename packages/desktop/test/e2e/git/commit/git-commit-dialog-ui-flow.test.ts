@@ -1,3 +1,13 @@
+import { createServer } from "node:http";
+import {
+  TID_TASK_SETTINGS_BUTTON,
+  TID_SETTINGS_SECTION_NAV,
+  TID_SETTINGS_BACK_BUTTON,
+  TID_CONFIRM_DIALOG_CONFIRM,
+  testId as sharedTestId,
+} from "@zcode/shared/test-ids";
+import { restartIntoWorkspace, seedReplayProvider } from "#e2e/helpers/model-provider-restart";
+import { clickTestIdByDom } from "#e2e/helpers/desktop-app";
 import { openStatusCapsule } from "#e2e/helpers/status-capsule";
 import { execFile } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -78,6 +88,111 @@ describe("Git 提交弹窗 UI manual-review E2E", () => {
 
     await openBranchSwitcherFromDialog();
     await waitForBranchOption(TARGET_BRANCH);
+  });
+  it("TM02/TM03: 显式覆盖先确认，取消不外发，确认只填草稿，空说明提交不写 Git", async function () {
+    this.timeout(180_000);
+    let requests = 0;
+    const fixture = createServer(async (request, response) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(Buffer.from(chunk));
+      const input = JSON.parse(Buffer.concat(chunks).toString()) as { model?: string };
+      if (input.model !== "git-tool-model") {
+        response.writeHead(400).end();
+        return;
+      }
+      requests += 1;
+      response.setHeader("content-type", "application/json");
+      response.end(
+        JSON.stringify({
+          id: "tool-git-response",
+          object: "chat.completion",
+          created: 1,
+          model: input.model,
+          choices: [
+            {
+              index: 0,
+              message: { role: "assistant", content: "test(git): review generated draft" },
+              finish_reason: "stop",
+            },
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        }),
+      );
+    });
+    await new Promise<void>((resolve) => fixture.listen(0, "127.0.0.1", resolve));
+    const address = fixture.address();
+    if (!address || typeof address === "string") throw new Error("Git fixture did not bind");
+    try {
+      await restartIntoWorkspace({
+        afterElectronProcessExit: () =>
+          seedReplayProvider({
+            id: "git-tool-provider",
+            name: "Git Tool Provider",
+            apiKey: "e2e-only",
+            models: ["git-tool-model"],
+            baseURL: `http://127.0.0.1:${address.port}/v1`,
+          }),
+      });
+      await clickTestIdByDom(TID_TASK_SETTINGS_BUTTON);
+      await clickTestIdByDom(sharedTestId(TID_SETTINGS_SECTION_NAV, "modelProvider"));
+      await $('[data-tool-model-navigation="true"]').click();
+      await $('[data-tool-model-select="git-commit-message"]').selectByAttribute(
+        "value",
+        "git-tool-provider/git-tool-model",
+      );
+      await $('[data-tool-model-save="git-commit-message"]').click();
+      await browser.waitUntil(
+        async () =>
+          (await $('[data-tool-model-status="git-commit-message"]').getText()).includes(
+            "git-tool-model",
+          ),
+        { timeout: 15_000 },
+      );
+      await clickTestIdByDom(TID_SETTINGS_BACK_BUTTON);
+      await expandSummaryPanelIfCollapsed();
+      await openCommitDialog();
+      await waitForCommitDialogReady();
+      const before = (
+        await execGit("git", ["rev-parse", "HEAD"], { cwd: DEFAULT_WORKSPACE })
+      ).stdout.trim();
+      await setCommitMessage("preserve existing draft");
+      await $(sel(TID_GIT_COMMIT_GENERATE_BUTTON)).click();
+      const confirmation = $('[data-confirm-intent="git-tool-model-generation"]');
+      await confirmation.waitForDisplayed({ timeout: 15_000 });
+      expect(await confirmation.getText()).toContain("Git Tool Provider");
+      expect(requests).toBe(0);
+      await browser.keys("Escape");
+      await confirmation.waitForDisplayed({ reverse: true, timeout: 15_000 });
+      const messageInput = $(sel(TID_GIT_COMMIT_MESSAGE_INPUT));
+      await messageInput.waitForEnabled({ timeout: 15_000 });
+      expect(await messageInput.getValue()).toBe("preserve existing draft");
+      expect(requests).toBe(0);
+      // 使用真实键盘编辑触发 React onChange，再用提交弹窗的主键快捷键执行当前动作。
+      const primaryModifier = process.platform === "darwin" ? "Meta" : "Control";
+      await messageInput.click();
+      await browser.keys([primaryModifier, "a"]);
+      await browser.keys("Backspace");
+      expect(await messageInput.getValue()).toBe("");
+      await assertSelectedAction("commit");
+      await browser.keys([primaryModifier, "Enter"]);
+      await confirmation.waitForDisplayed({ timeout: 15_000 });
+      await clickTestIdByDom(TID_CONFIRM_DIALOG_CONFIRM);
+      await browser.waitUntil(
+        async () =>
+          (await $(sel(TID_GIT_COMMIT_MESSAGE_INPUT)).getValue()) ===
+          "test(git): review generated draft",
+        { timeout: 30_000 },
+      );
+      expect(requests).toBe(1);
+      expect(
+        (await execGit("git", ["rev-parse", "HEAD"], { cwd: DEFAULT_WORKSPACE })).stdout.trim(),
+      ).toBe(before);
+      expect(await $(sel(TID_GIT_COMMIT_DIALOG)).isDisplayed()).toBe(true);
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        fixture.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
   });
 });
 
