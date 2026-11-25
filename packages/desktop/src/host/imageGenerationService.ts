@@ -40,16 +40,24 @@ export function createWindowHostImageGenerationService(options: {
   credentialService: ICredentialService;
   networkTransport: HostApiNetworkTransport;
 }): IImageGenerationService {
-  const { credentialService } = options;
+  const { credentialService, networkTransport } = options;
+  if (!networkTransport.prepareImageGeneration)
+    throw new Error("Image generation network transport is unavailable");
+  const privateKey = (ref?: string) => {
+    if (ref !== undefined && !/^image-generation\.credential\.[0-9a-f-]{36}$/.test(ref)) {
+      throw new Error("Invalid private image credential reference");
+    }
+    return ref ?? credentialKey;
+  };
   return createImageGenerationService({
     appConfigDir: getAppConfigDir(),
     appRunId,
     credential: {
-      get: () => credentialService.load(credentialKey),
-      set: (value) => credentialService.save(credentialKey, value),
-      delete: () => credentialService.delete(credentialKey),
+      get: (ref) => credentialService.load(privateKey(ref)),
+      set: (value, ref) => credentialService.save(privateKey(ref), value),
+      delete: (ref) => credentialService.delete(privateKey(ref)),
     },
-    fetch: options.networkTransport.fetch,
+    prepareImageGeneration: networkTransport.prepareImageGeneration.bind(networkTransport),
     createPngPreview: createImageGenerationPngPreview,
     ...(fixtureEndpoint ? { fixture: { endpoint: fixtureEndpoint, mode: "test" as const } } : {}),
   });

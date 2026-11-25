@@ -1,5 +1,6 @@
 import { crc32 } from "node:zlib";
 import { z } from "zod";
+import type { ImageGenerationErrorCode } from "./contract.js";
 
 export const MAX_IMAGE_BYTES = 16 * 1024 * 1024;
 export const MAX_PREVIEW_BYTES = 128 * 1024;
@@ -7,18 +8,20 @@ export const MAX_RESPONSE_BYTES = 23 * 1024 * 1024;
 export const GENERATION_TIMEOUT_MS = 120_000;
 const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
-export class ImageGenerationError extends Error {}
+export class ImageGenerationError extends Error {
+  constructor(
+    message: string,
+    readonly code: ImageGenerationErrorCode = "invalid_input",
+  ) {
+    super(message);
+    this.name = "ImageGenerationError";
+  }
+}
 
 export function invalidInput(): never {
   throw new ImageGenerationError("Invalid image generation input.");
 }
 
-export const startSchema = z.strictObject({
-  requestId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
-  prompt: z.string().trim().min(1).max(4000),
-  modelId: z.literal("gpt-image-1"),
-});
-export const settingsSchema = z.strictObject({ apiKey: z.string().trim().max(4096) });
 export const assetSchema = z.strictObject({ assetId: z.string().uuid() });
 
 export function parseInput<T>(schema: z.ZodType<T>, input: unknown): T {
@@ -140,10 +143,14 @@ export function resolveEndpoint(fixture?: {
   return url.href;
 }
 
-export async function readResponseJson(response: Response, signal: AbortSignal): Promise<unknown> {
+export async function readResponseJson(
+  response: Response,
+  signal: AbortSignal,
+  maxBytes = MAX_RESPONSE_BYTES,
+): Promise<unknown> {
   if (!response.body) invalidInput();
   const length = response.headers.get("content-length");
-  if (length && (!/^\d+$/.test(length) || Number(length) > MAX_RESPONSE_BYTES)) {
+  if (length && (!/^\d+$/.test(length) || Number(length) > maxBytes)) {
     await response.body.cancel();
     invalidInput();
   }
@@ -156,12 +163,28 @@ export async function readResponseJson(response: Response, signal: AbortSignal):
       const chunk = await reader.read();
       if (chunk.done) break;
       size += chunk.value.byteLength;
-      if (size > MAX_RESPONSE_BYTES) invalidInput();
+      if (size > maxBytes) invalidInput();
       chunks.push(chunk.value);
     }
     return JSON.parse(Buffer.concat(chunks, size).toString("utf8"));
   } finally {
     void reader.cancel().catch(() => undefined);
     reader.releaseLock();
+  }
+}
+
+/** Cover preparation/body work that cannot itself be interrupted; it must still check the signal before sending. */
+export async function withinDeadline<T>(signal: AbortSignal, run: () => Promise<T>): Promise<T> {
+  signal.throwIfAborted();
+  let cancel: (() => void) | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    cancel = () =>
+      reject(new ImageGenerationError("Image operation deadline exceeded.", "network_error"));
+    signal.addEventListener("abort", cancel, { once: true });
+  });
+  try {
+    return await Promise.race([deadline, run()]);
+  } finally {
+    if (cancel) signal.removeEventListener("abort", cancel);
   }
 }

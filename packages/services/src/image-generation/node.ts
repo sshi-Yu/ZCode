@@ -3,7 +3,20 @@ import { mkdir, open, realpath, rename, unlink } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { createServiceLogger } from "../logger/serviceLogger.js";
 import type { IImageGenerationService, ImageGenerationJob } from "./contract.js";
-import { createImageGenerationStore, type ImageGenerationStore } from "./storage.js";
+import {
+  createImageGenerationStore,
+  prepareImageGenerationDatabase,
+  type ImageGenerationStore,
+  type GenerationSnapshot,
+} from "./storage.js";
+import { withFileLock } from "@zcode/shared/node";
+import {
+  createConfigurationOwner,
+  providerError,
+  imageNetworkCode,
+  type ImageGenerationCredentialPort,
+  type PrepareImageGeneration,
+} from "./configurationOwner.js";
 import {
   assetSchema,
   decodeImageResponse,
@@ -14,9 +27,6 @@ import {
   parseInput,
   readResponseJson,
   resolveEndpoint,
-  settingsSchema,
-  startSchema,
-  validateCredential,
   validatePng,
 } from "./validation.js";
 
@@ -24,13 +34,8 @@ export interface CreateImageGenerationServiceOptions {
   appConfigDir: string;
   /** One main-process-generated identity shared by every Window Host in this app run. */
   appRunId: string;
-  credential: {
-    get(): Promise<string | null>;
-    set(value: string): Promise<void>;
-    delete(): Promise<void>;
-  };
-  /** Existing Host transport, including its proxy/TLS policy. It must honor signal/redirect. */
-  fetch: typeof globalThis.fetch;
+  credential: ImageGenerationCredentialPort;
+  prepareImageGeneration: PrepareImageGeneration;
   /** Fully decode PNG and return a <=384px, <=128KiB PNG preview using the host codec. */
   createPngPreview(png: Uint8Array): Promise<Uint8Array>;
   fixture?: { endpoint: string; mode: "development" | "test" };
@@ -39,6 +44,7 @@ export interface CreateImageGenerationServiceOptions {
 interface Ready {
   store: ImageGenerationStore;
   assetDir: string;
+  configuration: ReturnType<typeof createConfigurationOwner>;
 }
 
 const logger = createServiceLogger("image-generation");
@@ -55,7 +61,10 @@ async function safe<T>(run: () => Promise<T>): Promise<T> {
   } catch (error) {
     // 第三方网络、凭据和文件异常可能包含密钥/正文/本机路径，跨 RPC 只能返回固定安全错误。
     if (error instanceof ImageGenerationError) throw error;
-    throw new ImageGenerationError("Image generation service is unavailable.");
+    throw new ImageGenerationError(
+      "Image generation service is unavailable.",
+      "service_unavailable",
+    );
   }
 }
 
@@ -121,7 +130,7 @@ export function createImageGenerationService(
     !options ||
     !isAbsolute(options.appConfigDir) ||
     !/^[A-Za-z0-9_-]{1,128}$/.test(options.appRunId) ||
-    typeof options.fetch !== "function" ||
+    typeof options.prepareImageGeneration !== "function" ||
     typeof options.createPngPreview !== "function" ||
     typeof options.credential?.get !== "function" ||
     typeof options.credential?.set !== "function" ||
@@ -137,6 +146,8 @@ export function createImageGenerationService(
     const assetDir = join(canonical, "assets");
     await mkdir(assetDir, { recursive: true, mode: 0o700 });
     const dbPath = join(canonical, "jobs.sqlite");
+    const lockPath = join(canonical, "configuration");
+    await withFileLock(lockPath, () => prepareImageGenerationDatabase(dbPath));
     // realpath + normalized Windows case make in-process ownership independent of path aliases.
     const store = createImageGenerationStore(
       process.platform === "win32" ? dbPath.toLowerCase() : dbPath,
@@ -149,8 +160,31 @@ export function createImageGenerationService(
           }),
       },
     );
-    store.read();
-    return { store, assetDir };
+    const state = { store, assetDir } as Ready;
+    state.configuration = createConfigurationOwner({
+      store,
+      lockPath,
+      credential: options.credential,
+      prepare: options.prepareImageGeneration,
+      ...(options.fixture ? { fixtureEndpoint: endpoint } : {}),
+      dispatch: async (snapshot, apiKey) => {
+        const admitted = store.admit(snapshot);
+        if (admitted.accepted) {
+          store.track(admitted.job.id);
+          void dispatch(state, admitted.job, apiKey, snapshot).catch((error: unknown) => {
+            logger.error(undefined, "terminal job state could not be persisted", {
+              jobId: admitted.job.id,
+              code: safeErrorCode(error),
+            });
+            store.untrack(admitted.job.id);
+          });
+        }
+        return { kind: admitted.accepted ? "accepted" : "replayed", job: admitted.job };
+      },
+    });
+    await state.configuration.initialize();
+    store.readActive();
+    return state;
   }
   function ensureReady(): Promise<Ready> {
     if (!ready) {
@@ -171,15 +205,19 @@ export function createImageGenerationService(
     readyState: Ready,
     job: ImageGenerationJob,
     apiKey: string,
+    snapshot: GenerationSnapshot,
   ): Promise<void> {
     const { store, assetDir } = readyState;
     let dispatched = false;
+    const progress: { stage: "network" | "output" | "storage" } = { stage: "network" };
+    let disposeRoute: (() => void) | undefined;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), GENERATION_TIMEOUT_MS);
     timer.unref();
     let abortListener: (() => void) | undefined;
     const deadline = new Promise<never>((_resolve, reject) => {
-      abortListener = () => reject(new ImageGenerationError("Generation deadline exceeded."));
+      abortListener = () =>
+        reject(new ImageGenerationError("Generation deadline exceeded.", "network_error"));
       controller.signal.addEventListener("abort", abortListener, { once: true });
     });
     try {
@@ -187,25 +225,43 @@ export function createImageGenerationService(
         deadline,
         (async () => {
           controller.signal.throwIfAborted();
+          const prepared = await options.prepareImageGeneration(snapshot.endpoint, {
+            officialPreset: snapshot.officialPreset,
+            fixtureOrigin: options.fixture ? new URL(endpoint).origin : undefined,
+            signal: controller.signal,
+          });
+          disposeRoute = prepared.dispose;
+          if (controller.signal.aborted) {
+            prepared.dispose();
+            controller.signal.throwIfAborted();
+          }
           // 先持久提交不可逆发送屏障，再调用网络；崩溃/重放只读此屏障，绝不自动补发。
           if (!store.fence(job.id)) return;
           dispatched = true;
-          const response = await options.fetch(endpoint, {
+          const response = await prepared.fetch({
             method: "POST",
-            headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              "Content-Type": "application/json",
+              ...(snapshot.protocol === "openai-images-b64"
+                ? { "Idempotency-Key": snapshot.requestId }
+                : {}),
+            },
             body: JSON.stringify({
               model: job.modelId,
               prompt: job.prompt,
               n: 1,
-              size: "1024x1024",
-              output_format: "png",
+              ...snapshot.parameters,
+              // 严格兼容接口拒绝 output_format；根据已冻结协议选择格式，不能发送后再回退重试。
+              ...(snapshot.protocol === "openai-images-b64"
+                ? { response_format: "b64_json" }
+                : { output_format: "png" }),
             }),
             redirect: "error",
             signal: controller.signal,
           });
           controller.signal.throwIfAborted();
           if (!response.ok) {
-            void response.body?.cancel().catch(() => undefined);
             // 明确的客户端拒绝可证明未成功；5xx/重定向等结果保持未知，不推断无计费。
             // HTTP 408/499 仍表示超时或连接中断，不能据此证明上游未产生结果。
             const rejected =
@@ -213,12 +269,19 @@ export function createImageGenerationService(
               response.status < 500 &&
               response.status !== 408 &&
               response.status !== 499;
+            const code = rejected
+              ? await providerError(response, controller.signal)
+              : "outcome_unknown";
+            if (!rejected) void response.body?.cancel().catch(() => undefined);
+            controller.signal.throwIfAborted();
             store.finish(
               job.id,
               rejected ? "failed" : "outcome_unknown",
               rejected
                 ? "Image provider rejected the request. Check the image settings."
                 : "Generation outcome is unknown. Create a new request to generate again.",
+              undefined,
+              code,
             );
             (rejected ? logger.info : logger.warn)(undefined, "provider response settled job", {
               jobId: job.id,
@@ -226,6 +289,7 @@ export function createImageGenerationService(
             });
             return;
           }
+          progress.stage = "output";
           const png = decodeImageResponse(await readResponseJson(response, controller.signal));
           controller.signal.throwIfAborted();
           // 解码器只接收副本，预览缩放不能改写随后持久化与导出的原始字节。
@@ -233,6 +297,7 @@ export function createImageGenerationService(
           controller.signal.throwIfAborted();
           validatePng(preview, true);
           const assetId = randomUUID();
+          progress.stage = "storage";
           await writeOriginal(assetDir, assetId, png, controller.signal);
           controller.signal.throwIfAborted();
           store.finish(job.id, "succeeded", undefined, {
@@ -255,51 +320,44 @@ export function createImageGenerationService(
         dispatched
           ? "Generation outcome is unknown. Create a new request to generate again."
           : "Generation stopped before dispatch.",
+        undefined,
+        progress.stage === "output"
+          ? "invalid_output"
+          : progress.stage === "storage"
+            ? "storage_error"
+            : imageNetworkCode(error),
       );
     } finally {
       clearTimeout(timer);
+      disposeRoute?.();
       if (abortListener) controller.signal.removeEventListener("abort", abortListener);
       store.untrack(job.id);
     }
   }
 
   return {
-    getSettings: () =>
-      safe(async () => ({
-        modelId: "gpt-image-1" as const,
-        configured: Boolean(await options.credential.get()),
-      })),
-    saveSettings: (raw) =>
+    getConfiguration: () =>
+      safe(async () => (await ensureReady()).configuration.getConfiguration()),
+    saveConnection: (raw) =>
+      safe(async () => (await ensureReady()).configuration.saveConnection(raw)),
+    deleteConnection: (raw) =>
+      safe(async () => (await ensureReady()).configuration.deleteConnection(raw)),
+    setDefaultSelection: (raw) =>
+      safe(async () => (await ensureReady()).configuration.setDefaultSelection(raw)),
+    probeConnection: (raw) =>
+      safe(async () => (await ensureReady()).configuration.probeConnection(raw)),
+    startGeneration: (raw) =>
+      safe(async () => (await ensureReady()).configuration.startGeneration(raw)),
+    getRequest: (raw) => safe(async () => (await ensureReady()).configuration.getRequest(raw)),
+    readActive: () => safe(async () => ({ job: (await ensureReady()).store.readActive() })),
+    readHistory: (raw) => safe(async () => (await ensureReady()).configuration.readHistory(raw)),
+    readPreview: (raw) =>
       safe(async () => {
-        const { apiKey } = parseInput(settingsSchema, raw);
-        if (!apiKey) await options.credential.delete();
-        else await options.credential.set(validateCredential(apiKey));
-      }),
-    read: () => safe(async () => ({ jobs: (await ensureReady()).store.read() })),
-    start: (raw) =>
-      safe(async () => {
-        const input = parseInput(startSchema, raw);
-        const state = await ensureReady();
-        const replay = state.store.replay(input);
-        if (replay) return replay;
-        const credential = await options.credential.get();
-        if (!credential)
-          throw new ImageGenerationError("Configure an image API key before generating.");
-        const apiKey = validateCredential(credential);
-        const admitted = state.store.admit(input);
-        if (admitted.accepted) {
-          // 无 await 地登记 owner，再启动受控异步任务，避免同进程另一个窗口误回收新受理行。
-          state.store.track(admitted.job.id);
-          void dispatch(state, admitted.job, apiKey).catch((error: unknown) => {
-            // 持久化本身不可用：记录后由下一次读取按持久发送屏障恢复，绝不补发。
-            logger.error(undefined, "terminal job state could not be persisted", {
-              jobId: admitted.job.id,
-              code: safeErrorCode(error),
-            });
-            state.store.untrack(admitted.job.id);
-          });
-        }
-        return admitted.job;
+        const { assetId } = parseInput(assetSchema, raw);
+        const preview = (await ensureReady()).store.preview(assetId);
+        if (!preview)
+          throw new ImageGenerationError("Image preview is unavailable.", "storage_error");
+        return { preview };
       }),
     readImage: (raw) =>
       safe(async () => {

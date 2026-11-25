@@ -1,4 +1,4 @@
-import { ServiceChannels } from "@zcode/shared";
+import { ServiceChannels, credentialKeySchema } from "@zcode/shared";
 import { createServiceDescriptor } from "../descriptors.js";
 
 /**
@@ -28,7 +28,13 @@ export function scopeCredentialServiceForRpc(
   service: ICredentialService,
   localDesktopRecovery: boolean,
 ): ICredentialService {
-  if (localDesktopRecovery) return service;
+  function publicKey(raw: string): string {
+    const key = credentialKeySchema.parse(raw);
+    // 规范化必须先于私有域判断；所有客户端（含本机桌面）均不能通过通用 RPC 读取生图密钥。
+    if (key.startsWith("image-generation."))
+      throw Object.assign(new Error("Host private credential"), { code: "credential_private" });
+    return key;
+  }
   const rejectRecovery = async (): Promise<never> => {
     throw Object.assign(
       new Error("Credential store recovery is only available from local Desktop"),
@@ -40,10 +46,10 @@ export function scopeCredentialServiceForRpc(
   // clientMode 和可自领的 host ticket 都不是恢复授权。所有 RPC 默认只读写，
   // 唯一本机 Desktop MessagePort 发布点显式放行，避免新网络入口漏设限制。
   return {
-    load: service.load.bind(service),
-    save: service.save.bind(service),
-    delete: service.delete.bind(service),
-    inspectStore: rejectRecovery,
-    recoverStore: rejectRecovery,
+    load: (key) => service.load(publicKey(key)),
+    save: (key, value) => service.save(publicKey(key), value),
+    delete: (key) => service.delete(publicKey(key)),
+    inspectStore: localDesktopRecovery ? service.inspectStore.bind(service) : rejectRecovery,
+    recoverStore: localDesktopRecovery ? service.recoverStore.bind(service) : rejectRecovery,
   };
 }
