@@ -3,6 +3,10 @@
 本文定义 Desktop 本地插件管理的用户级生命周期合同。只有包含独立 setup、action、assertion
 和 evidence 的 case 才算覆盖；仅从某条长路径中经过某状态不算覆盖。
 
+## GENIMAGE-VIEW：原生画布视图候选
+
+普通桌面窗口从左侧主导航打开 GenImage，无需安装插件。初始三张 SVG 示例以 A 为根；从 B 派生后只新增一张指向 B 的示例，且 B 仍指向 A。历史可定位回 A，从桌面返回按钮离开，再打开重置为三张示例。桌面验收另检查拖拽和缩放、焦点恢复、宽窄容器下的浮层及深浅主题。普通 Web 和手机远控无入口，不验证真实生图、原图文件或数据恢复。
+
 ## Scope and state ownership
 
 - Included：Desktop local workspace、user-scope plugin storage、Public/Personal、Builtin、CDN、

@@ -1,5 +1,7 @@
 # 项目侧栏
 
+桌面左侧 `GenImage` 导航只展示 Shell 提供的命令和选中投影；打开视图不属于项目或会话写路径。
+
 Host projectService 的 readTree 决定行集合、项目归属和 CLI 事实镜像；UI 只保存折叠、视图与表单草稿。实时 sessions-index 只附加 activity，不补行、不写回归属。读取以请求序号拒绝迟到结果；workspace/remote endpoint 变化立即取消旧结果资格。
 
 设置页复用公开的 `useOptionalProjectDirectory` 读取同一目录 owner；最近项目通过 `resolveRecentRemoteProjectPreference` 按 Source + 目录固定唯一入口 ID，继续既有项目恢复链路。缺失或歧义不生成创建意图，连接完成仍复验原入口。

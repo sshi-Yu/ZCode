@@ -1,4 +1,4 @@
-import { Blocks, CalendarClock } from "lucide-react";
+import { Blocks, CalendarClock, Image } from "lucide-react";
 import { memo } from "react";
 import { TID_AUTOMATIONS_OPEN } from "@zcode/shared/test-ids";
 import type { ProjectSidebarProps } from "@/project-sidebar/contract.js";
@@ -21,6 +21,8 @@ export const ProjectSidebarNavigation = memo(function ProjectSidebarNavigation({
     | "automationsActive"
     | "onOpenPluginStore"
     | "pluginStoreActive"
+    | "onOpenGenImage"
+    | "genImageActive"
     | "webRemoteControlWorkspaceSwitcher"
     | "navPrimarySlot"
     | "workspacePath"
@@ -65,6 +67,19 @@ export const ProjectSidebarNavigation = memo(function ProjectSidebarNavigation({
         >
           <Blocks className="size-4" />
           {intl.formatMessage({ id: "workspace.openPluginsSettings" })}
+        </Button>
+      ) : null}
+      {props.onOpenGenImage ? (
+        <Button
+          variant="ghost"
+          size="lg"
+          className={`w-full justify-start gap-2 ${props.genImageActive ? "bg-selected text-foreground" : ""}`}
+          aria-pressed={props.genImageActive ?? false}
+          data-testid="genimage-sidebar-open"
+          onClick={props.onOpenGenImage}
+        >
+          <Image className="size-4" />
+          GenImage
         </Button>
       ) : null}
       {/* 扩展导航条目（nav.primary）：手机远控与「插件市场」一同隐藏；逻辑都在 extension-slots。 */}

@@ -169,6 +169,15 @@ modules:
   - id: ui
     roots: [packages/ui/src]
     managed: false
+  - id: ui-genimage-view
+    roots: [packages/ui/src/genimage]
+    managed: true
+    requires: [ui]
+    publicEntrypoints: [packages/ui/src/genimage/index.ts, packages/ui/src/genimage/contract.ts]
+    layers:
+      contract: contract.ts
+      ui: .
+    owner: ui
   - id: web
     roots: [packages/web/src]
     managed: false

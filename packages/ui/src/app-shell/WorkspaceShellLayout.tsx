@@ -61,6 +61,8 @@ import {
 } from "@/managed-worktrees/index.js";
 import type { ManagedWorktreeCreationSettlement } from "@zcode/shared";
 import { ScopedErrorBoundary } from "@/ErrorBoundary.js";
+import { DesktopWindowControls } from "@/DesktopWindowControls.js";
+import { GenImageView } from "@/genimage/index.js";
 
 import { AUTOMATIONS_TOAST_ANCHOR_ID, AutomationsSection } from "@/settings/AutomationsSection.js";
 import type {
@@ -492,6 +494,8 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
   );
   const isLinuxDesktop = Boolean(isDesktop && !isMacDesktop && !isWindowsDesktop);
   const isWebRemoteControlShell = Boolean(webRemoteControlWorkspaceSwitcher);
+  const supportsGenImage = Boolean(isDesktop) && !isWebRemoteControlShell;
+  const genImageActive = supportsGenImage && workspaceMainView === "genimage";
   // Windows/Linux 原先遗漏外层留白，导致独立面板贴住窗口边缘；桌面统一使用 4px 间距。
   const hasDesktopPanelInset = isMacDesktop || isWindowsDesktop || isLinuxDesktop;
   const usesInlineWindowControls = Boolean(isWindowsDesktop || isLinuxDesktop);
@@ -1478,19 +1482,24 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
     }),
     [activeTaskId, handleOpenDraftPluginUi, showChatMainView],
   );
-  const primaryNavigationBack =
-    workspaceMainView === "plugin-store" ? showChatMainView : handleTaskNavBack;
-  const canPrimaryNavigationBack = workspaceMainView === "plugin-store" || canTaskNavBack;
+  const openGenImage = useCallback(
+    () => onWorkspaceMainViewChange("genimage"),
+    [onWorkspaceMainViewChange],
+  );
+  const primaryViewBackToChat = workspaceMainView === "plugin-store" || genImageActive;
+  const primaryNavigationBack = primaryViewBackToChat ? showChatMainView : handleTaskNavBack;
+  const canPrimaryNavigationBack = primaryViewBackToChat || canTaskNavBack;
   useEffect(() => {
     if (
-      isWebRemoteControlShell &&
-      (workspaceMainView === "automations" || workspaceMainView === "plugin-store")
+      (isWebRemoteControlShell &&
+        (workspaceMainView === "automations" || workspaceMainView === "plugin-store")) ||
+      (!supportsGenImage && workspaceMainView === "genimage")
     ) {
       // 修复原因：手机远控复用桌面 shell 时可能保留上一次主视图状态；
       // 远控不承载 Automations，必须立即回落到 continuous/replayable 边界之外的聊天页。
       onWorkspaceMainViewChange("chat");
     }
-  }, [isWebRemoteControlShell, onWorkspaceMainViewChange, workspaceMainView]);
+  }, [isWebRemoteControlShell, onWorkspaceMainViewChange, supportsGenImage, workspaceMainView]);
   const handleCreateTaskInChat = useCallback(
     (request?: Parameters<typeof onCreateTask>[0]) => {
       // workspaceReadOnlyReason 判定的是活动 workspace；当 request 显式带 targetWorkspace 时
@@ -2316,7 +2325,7 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
   // 与 Task Header 分叉。桌面端统一复用 WorkspaceHeader，只由 variant 裁剪 task 专属内容；
   // 手机远控无 active task 时仍不渲染桌面 chrome，继续遵守 replayable overlay 边界。
   const shouldRenderMainViewHeader =
-    workspaceMainView !== "automations" && workspaceMainView !== "plugin-store";
+    workspaceMainView !== "automations" && workspaceMainView !== "plugin-store" && !genImageActive;
   const shouldRenderWorkspaceHeader =
     shouldRenderMainViewHeader && (activeTaskId !== null || isDesktop);
   // 修复原因：ErrorBoundary resetKeys 的数组如果每次 render 都重新创建，
@@ -2389,6 +2398,8 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
       automationsActive={workspaceMainView === "automations"}
       onOpenPluginStore={handleOpenPluginStore}
       pluginStoreActive={workspaceMainView === "plugin-store"}
+      onOpenGenImage={supportsGenImage ? openGenImage : undefined}
+      genImageActive={genImageActive}
       navPrimarySlot={navPrimarySlot}
       // 桌面没有 mobile 导航动作；内联包装曾让右侧开关穿透侧栏 memo，重复渲染全部项目。
       onWebRemoteTaskOpen={
@@ -3021,6 +3032,15 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
                               </div>
                             </AutomationsMainBreadcrumbFrame>
                           </main>
+                        ) : genImageActive ? (
+                          <GenImageView
+                            sidebarCollapsed={!isSidebarVisible}
+                            windowControls={
+                              usesInlineWindowControls && !isSidePaneVisible ? (
+                                <DesktopWindowControls />
+                              ) : null
+                            }
+                          />
                         ) : (
                           <main className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
                             {renderChatFindDialog()}
@@ -3114,7 +3134,7 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
                     </section>
                   </ResizablePanel>
                   {isWebRemoteControlShell ||
-                  (workspaceMainView !== "automations" && workspaceMainView !== "plugin-store") ? (
+                  shouldRenderMainViewHeader ? (
                     <AnimatedTerminalPanel
                       frameClassName={cn(
                         isSidePaneVisible

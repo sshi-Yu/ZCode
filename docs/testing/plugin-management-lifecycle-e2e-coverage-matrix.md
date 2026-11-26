@@ -1,5 +1,11 @@
 # Plugin Management Lifecycle E2E Coverage Matrix
 
+## GENIMAGE-VIEW：原生生图画布（视图切片）
+
+桌面候选：`packages/desktop/test/e2e/workspace/image-generation/manual-review/pending/genimage-native-view.test.ts`。
+覆盖原生入口、示例谱系、派生、历史定位及离开后重置。只读本地 SVG 夹具，不验证旧插件、生图服务、文件或持久化。
+Windows Electron 隔离回放 `genimage-native-view-20261126-154711` 通过 1/1，仍待人工审核与 CI 准入。另在 Electron 开发窗口验证了拖拽不改来源、指针缩放、键盘新建/关闭与焦点恢复、窄宽容器和浅深主题；Web/手机与其他 OS 未实测。
+
 ## 2026-11-10 扩展候选转正
 
 本轮复核 `plugins/extensions/manual-review/pending/` 的 15 个宿主能力候选。产品场景沿用

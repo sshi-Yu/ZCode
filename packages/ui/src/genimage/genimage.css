@@ -1,0 +1,442 @@
+.genimage-view {
+  --gi-shadow: 0 4px 16px rgb(0 0 0 / 8%), 0 1px 3px rgb(0 0 0 / 4%);
+  --gi-top: 16px;
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  container: genimage / inline-size;
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-size: var(--text-ui-base);
+}
+
+.genimage-view[data-sidebar-collapsed="true"] {
+  --gi-top: 52px;
+}
+.genimage-view .gi-viewport {
+  position: absolute;
+  inset: 0;
+  outline: none;
+  touch-action: none;
+  cursor: grab;
+  background-image: radial-gradient(circle, var(--color-border) 1px, transparent 1px);
+}
+.genimage-view .gi-viewport[data-dragging="true"],
+.genimage-view .gi-viewport[data-dragging="true"] .gi-node {
+  cursor: grabbing;
+}
+.genimage-view .gi-world {
+  position: absolute;
+  inset: 0 auto auto 0;
+  transform-origin: top left;
+}
+.genimage-view .gi-edges {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+}
+.genimage-view .gi-edges > path {
+  fill: none;
+  stroke: var(--color-foreground-subtlest);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.genimage-view .gi-edges > [data-related="true"] {
+  stroke: var(--color-foreground-subtle);
+  stroke-width: 2.5;
+}
+.genimage-view .gi-edges marker {
+  fill: var(--color-foreground-subtle);
+}
+
+.genimage-view .gi-node {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 288px;
+  height: 312px;
+  padding: 8px;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-card);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 5%);
+  cursor: grab;
+  user-select: none;
+}
+.genimage-view .gi-node[data-selected="true"] {
+  z-index: 1;
+  outline: 2px solid var(--color-foreground);
+  outline-offset: 4px;
+}
+.genimage-view .gi-node > header {
+  display: flex;
+  min-height: 22px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 4px 8px;
+  font-size: var(--text-ui-sm);
+  color: var(--color-foreground-subtle);
+}
+.genimage-view .gi-node-art {
+  display: block;
+  width: 100%;
+  height: 204px;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  pointer-events: none;
+}
+.genimage-view .gi-node > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 4px 0;
+}
+.genimage-view .gi-node > footer p {
+  margin-top: 2px;
+  color: var(--color-foreground-subtle);
+  font-size: var(--text-ui-sm);
+}
+.genimage-view .gi-node h3 {
+  font-weight: 500;
+}
+.genimage-view .gi-node-actions {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 50%;
+  translate: -50%;
+  transform-origin: top center;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  white-space: nowrap;
+}
+.genimage-view .gi-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: var(--radius-md);
+  background: var(--color-secondary);
+  color: var(--color-foreground-subtle);
+  font-size: var(--text-ui-sm);
+  white-space: nowrap;
+}
+.genimage-view .gi-float {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-popover);
+  box-shadow: var(--gi-shadow);
+}
+.genimage-view button:focus-visible,
+.genimage-view .gi-node:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+.genimage-view .gi-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+}
+.genimage-view .gi-toolbar > i {
+  width: 1px;
+  height: 20px;
+  margin-inline: 4px;
+  background: var(--color-border);
+}
+.genimage-view .gi-top {
+  position: absolute;
+  inset: var(--gi-top) 16px auto;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  -webkit-app-region: drag;
+}
+.genimage-view .gi-top > * {
+  -webkit-app-region: no-drag;
+}
+.genimage-view .gi-brand {
+  margin-right: auto;
+  padding-inline: 8px;
+}
+.genimage-view .gi-brand h1 {
+  padding-inline: 4px;
+  font-weight: 650;
+}
+.genimage-view .gi-note {
+  position: absolute;
+  top: calc(var(--gi-top) + 70px);
+  left: 24px;
+  pointer-events: none;
+}
+.genimage-view .gi-note p:first-child {
+  color: var(--color-foreground-subtle);
+  font-size: var(--text-ui-sm);
+  letter-spacing: 0.08em;
+}
+.genimage-view .gi-note p:last-child,
+.genimage-view .gi-gesture {
+  color: var(--color-foreground-subtle);
+  font-size: var(--text-ui-sm);
+}
+.genimage-view .gi-zoom {
+  position: absolute;
+  bottom: 24px;
+  left: 24px;
+}
+.genimage-view .gi-zoom output {
+  min-width: 48px;
+  text-align: center;
+  font-size: var(--text-ui-sm);
+  font-variant-numeric: tabular-nums;
+}
+.genimage-view .gi-status {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  padding-inline: 10px;
+  font-size: var(--text-ui-sm);
+}
+.genimage-view .gi-status > i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-foreground-subtle);
+}
+.genimage-view .gi-gesture,
+.genimage-view .gi-announcement {
+  position: absolute;
+  left: 50%;
+  translate: -50%;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  pointer-events: none;
+}
+.genimage-view .gi-gesture {
+  bottom: 30px;
+}
+.genimage-view .gi-announcement {
+  bottom: 76px;
+  z-index: 4;
+  padding: 10px 14px;
+}
+
+.genimage-view .gi-panel {
+  position: absolute;
+  z-index: 3;
+  top: calc(var(--gi-top) + 62px);
+  right: 16px;
+  bottom: auto;
+  width: 352px;
+  max-width: calc(100% - 32px);
+  max-height: calc(100% - var(--gi-top) - 128px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.genimage-view .gi-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+.genimage-view .gi-panel-header h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 650;
+}
+.genimage-view .gi-panel-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  padding: 16px;
+}
+.genimage-view .gi-caption,
+.genimage-view .gi-source p {
+  color: var(--color-foreground-subtle);
+  font-size: var(--text-ui-sm);
+}
+.genimage-view .gi-source {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: var(--radius-lg);
+  background: var(--color-secondary);
+}
+.genimage-view .gi-source strong {
+  font-size: var(--text-ui-sm);
+  font-weight: 550;
+}
+.genimage-view .gi-source-art,
+.genimage-view .gi-history-art {
+  width: 64px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  flex: none;
+}
+.genimage-view .gi-detail-art {
+  display: block;
+  width: 100%;
+  border-radius: var(--radius-lg);
+}
+.genimage-view .gi-field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.genimage-view .gi-prompt {
+  min-height: 112px;
+  max-height: 220px;
+  resize: vertical;
+  border-color: var(--color-input-border);
+  background: var(--color-input);
+}
+.genimage-view .gi-prompt:focus-visible {
+  border-color: var(--color-input-border-focused);
+  background: var(--color-input-focused);
+}
+.genimage-view .gi-prompt::placeholder {
+  color: var(--color-foreground-subtle);
+}
+.genimage-view .gi-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 10px;
+}
+.genimage-view .gi-form-grid input {
+  min-width: 0;
+  width: 100%;
+}
+.genimage-view .gi-ratios,
+.genimage-view .gi-relations {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.genimage-view .gi-relations {
+  margin-top: 6px;
+}
+.genimage-view .gi-ratios button {
+  min-height: 30px;
+  padding-inline: 5px;
+}
+.genimage-view .gi-ratios button[aria-pressed="true"] {
+  border-color: var(--color-foreground);
+  background: var(--color-selected);
+}
+.genimage-view .gi-notice {
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-secondary);
+  color: var(--color-foreground-subtle);
+  font-size: var(--text-ui-sm);
+}
+.genimage-view .gi-settings {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  font-size: var(--text-ui-sm);
+}
+.genimage-view .gi-settings dt {
+  color: var(--color-foreground-subtle);
+}
+.genimage-view .gi-settings dd {
+  text-align: right;
+}
+.genimage-view .gi-shortcuts {
+  grid-template-columns: minmax(0, 1fr);
+}
+.genimage-view .gi-shortcuts > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+.genimage-view .gi-shortcuts kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+.genimage-view .gi-history li + li {
+  border-top: 1px solid var(--color-border);
+}
+.genimage-view .gi-history-row {
+  width: 100%;
+  height: auto;
+  min-height: 50px;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 6px;
+  text-align: left;
+  white-space: normal;
+}
+.genimage-view .gi-history-row > span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+.genimage-view .gi-history-row strong,
+.genimage-view .gi-history-row .gi-caption {
+  display: block;
+}
+.genimage-view .gi-history-art {
+  width: 52px;
+  height: 40px;
+}
+
+@container genimage (max-width: 760px) {
+  .genimage-view .gi-gesture {
+    display: none;
+  }
+}
+
+@container genimage (max-width: 639px) {
+  .genimage-view .gi-top {
+    inset-inline: 12px;
+  }
+  .genimage-view .gi-brand,
+  .genimage-view .gi-top-actions {
+    padding: 4px;
+  }
+  .genimage-view .gi-top-actions span,
+  .genimage-view .gi-brand > i,
+  .genimage-view .gi-status > span:not(.gi-badge) {
+    display: none;
+  }
+  .genimage-view .gi-note {
+    top: calc(var(--gi-top) + 56px);
+    left: 16px;
+  }
+  .genimage-view .gi-zoom {
+    left: 12px;
+    bottom: 12px;
+  }
+  .genimage-view .gi-status {
+    right: 12px;
+    bottom: 12px;
+  }
+  .genimage-view .gi-panel {
+    inset: auto 12px 64px;
+    width: auto;
+    max-width: none;
+    max-height: calc(100% - var(--gi-top) - 116px);
+  }
+}
+
+@container genimage (max-width: 410px) {
+  .genimage-view .gi-brand button span,
+  .genimage-view .gi-zoom button span {
+    display: none;
+  }
+  .genimage-view .gi-top {
+    gap: 4px;
+  }
+}
