@@ -2613,14 +2613,37 @@ export const zcodeWorkspaceGenerateTextParamsSchema = z
     prompt: nonEmptyString.optional(),
     messages: z.array(zcodeWorkspaceModelMessageSchema).min(1).optional(),
     tools: z.array(zcodeWorkspaceModelToolSchema).optional(),
+    featureImage: z
+      .string()
+      .min(12)
+      .max(349528)
+      .regex(/^iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/)
+      .refine((value) => value.length % 4 === 0)
+      .optional(),
+    featureRouteKey: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
     querySource: nonEmptyString,
     maxOutputTokens: z.number().int().positive().optional(),
     operationId: nonEmptyString.optional(),
   })
   .strict()
-  .refine((value) => value.prompt !== undefined || value.messages !== undefined, {
-    message: "prompt 或 messages 至少需要提供一个",
-  });
+  .refine(
+    (value) =>
+      value.querySource === "genimage_features"
+        ? value.featureImage !== undefined &&
+          value.featureRouteKey !== undefined &&
+          value.prompt === undefined &&
+          value.messages === undefined &&
+          value.tools === undefined
+        : value.featureImage === undefined &&
+          value.featureRouteKey === undefined &&
+          (value.prompt !== undefined || value.messages !== undefined),
+    {
+      message: "prompt 或 messages 至少需要提供一个",
+    },
+  );
 export const zcodeWorkspaceGenerateTextResultSchema = z
   .object({
     text: z.string(),

@@ -399,6 +399,8 @@ export interface ZCodeAgentGenerateWorkspaceTextParams extends ZCodeAgentWorkspa
   prompt?: string;
   messages?: ZCodeWorkspaceGenerateTextParams["messages"];
   tools?: ZCodeWorkspaceGenerateTextParams["tools"];
+  featureImage?: ZCodeWorkspaceGenerateTextParams["featureImage"];
+  featureRouteKey?: ZCodeWorkspaceGenerateTextParams["featureRouteKey"];
   querySource: string;
   maxOutputTokens?: number;
   signal?: AbortSignal;

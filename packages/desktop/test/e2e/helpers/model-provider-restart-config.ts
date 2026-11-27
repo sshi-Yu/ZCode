@@ -30,6 +30,7 @@ export type SeedReplayProviderModel =
   | {
       readonly contextWindow?: number;
       readonly id: string;
+      readonly inputModalities?: PersonalModelConfigSeed["inputModalities"];
       readonly limit?: { readonly output?: number };
       readonly maxOutputTokens?: number;
       readonly reasoningLevel?: PersonalModelConfigSeed["reasoningLevel"];

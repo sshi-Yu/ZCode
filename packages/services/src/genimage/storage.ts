@@ -2,21 +2,31 @@ import { constants } from "node:fs";
 import { lstat, mkdir, open, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { withAtomicFileLock } from "../fs/atomicFileUtils.js";
+import { GENIMAGE_ASSET_MAX_BYTES, type GenImageMimeType } from "./contract.js";
 
 const manifestName = "board.json";
 const manifestLimit = 16 * 1024 * 1024;
 const stagedName = ".genimage.tmp";
-const assetPattern = /^([a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})-(?:original|thumbnail)\.png$/;
+const assetPattern =
+  /^([a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})-(?:original|thumbnail)\.(?:png|jpg)$/;
 
 export const assetLimits = {
-  original: 2 * 1024 * 1024,
+  original: GENIMAGE_ASSET_MAX_BYTES,
   thumbnail: 256 * 1024,
 } as const;
 
 export type AssetVariant = keyof typeof assetLimits;
 
-export function assetPath(directory: string, nodeId: string, variant: AssetVariant): string {
-  return join(directory, `${nodeId}-${variant}.png`);
+export function assetPath(
+  directory: string,
+  nodeId: string,
+  variant: AssetVariant,
+  type?: GenImageMimeType,
+): string {
+  return join(
+    directory,
+    `${nodeId}-${variant}.${variant === "original" && type === "image/jpeg" ? "jpg" : "png"}`,
+  );
 }
 
 function isMissing(error: unknown): boolean {
@@ -107,9 +117,10 @@ export async function publishAsset(
   nodeId: string,
   variant: AssetVariant,
   png: Buffer,
+  type?: GenImageMimeType,
 ): Promise<void> {
   if (png.length > assetLimits[variant]) throw new Error("GenImage PNG exceeds the size limit");
-  await publish(directory, assetPath(directory, nodeId, variant), png);
+  await publish(directory, assetPath(directory, nodeId, variant, type), png);
 }
 
 async function syncDirectory(directory: string): Promise<void> {

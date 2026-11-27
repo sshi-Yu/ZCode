@@ -478,6 +478,7 @@ export interface AgentRuntimeDeps {
 
 export interface RuntimeModelFactoryInput {
   selection: ModelSelection;
+  expectedProviderRouteKey?: string;
   /** 只绑定到本次创建的 Model，不进入公共 ModelRequest 或 Session 持久化。 */
   requestDependencies?: ModelRequestDependencies;
 }

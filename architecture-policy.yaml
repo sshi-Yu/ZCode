@@ -172,7 +172,7 @@ modules:
   - id: ui-genimage-view
     roots: [packages/ui/src/genimage]
     managed: true
-    requires: [ui, services, genimage]
+    requires: [ui, services, genimage, image-preview-editor]
     publicEntrypoints: [packages/ui/src/genimage/index.ts, packages/ui/src/genimage/contract.ts]
     layers:
       contract: contract.ts
@@ -181,7 +181,7 @@ modules:
   - id: genimage
     roots: [packages/services/src/genimage]
     managed: true
-    requires: [services, shared]
+    requires: [services, shared, specialized-model-settings]
     publicEntrypoints:
       - packages/services/src/genimage/contract.ts
       - packages/services/src/genimage/node.ts

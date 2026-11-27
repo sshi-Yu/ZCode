@@ -143,7 +143,7 @@ export function ImageModelSettings() {
         icon={<Image className="size-5" />}
         title={text("图像模型", "Image models")}
         description={text(
-          "配置独立的文生图模型。保存设置不会发起生图请求。",
+          "配置通过提示词创建图像的模型。保存设置不会发送请求。",
           "Configure text-to-image models. Saving settings does not send a generation request.",
         )}
       />

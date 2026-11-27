@@ -1,336 +1,183 @@
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { strict as assert } from "node:assert";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Key } from "webdriverio";
-import { reloadElectronSessionPreservingBrowserProfile } from "#e2e/helpers/e2e-electron-reload";
+import { PNG } from "pngjs";
+import { TID_SETTINGS_SECTION_NAV, TID_TASK_SETTINGS_BUTTON, testId } from "@zcode/shared/test-ids";
 import {
-  clearAppData,
+  clickTestIdByDom,
   DEFAULT_WORKSPACE,
   getE2EAppDataPaths,
   waitForWorkspaceApp,
 } from "#e2e/helpers/desktop-app";
-
-type ElectronMock = Awaited<ReturnType<typeof browser.electron.mock>>;
+import { reloadElectronSessionPreservingBrowserProfile } from "#e2e/helpers/e2e-electron-reload";
 
 const workspace = '[data-testid="genimage-workspace"]';
-const entry = '[data-testid="genimage-sidebar-open"]';
-const localMode = '[data-testid="genimage-local-mode"]';
-const node = (id: string) => `${workspace} [data-genimage-node="${id}"]`;
+const fixture = new PNG({ width: 280, height: 180 });
+fixture.data.fill(200);
+const png = PNG.sync.write(fixture);
 
-interface NodePosition {
-  version: number;
-  x: number;
-  y: number;
+async function openImages() {
+  await waitForWorkspaceApp(DEFAULT_WORKSPACE, 60_000);
+  const entry = $('[data-testid="genimage-sidebar-open"]');
+  await entry.waitForClickable();
+  await entry.click();
+  await $(workspace).waitForDisplayed();
+  await $('[data-testid="genimage-import"]').waitForEnabled();
 }
 
-async function readNodeIds(): Promise<string[]> {
-  return browser.execute(
-    (selector) =>
-      Array.from(document.querySelectorAll<HTMLElement>(selector)).map(
-        (element) => element.dataset.genimageNode ?? "",
-      ),
-    `${workspace} [data-genimage-node]`,
-  ) as unknown as Promise<string[]>;
-}
-
-async function waitForNodeCount(count: number, timeout = 30_000): Promise<void> {
-  await browser.waitUntil(async () => (await readNodeIds()).length === count, {
-    timeout,
-    timeoutMsg: `GenImage 本机画布节点数没有达到 ${count}`,
-  });
-}
-
-async function waitForNewNode(previous: readonly string[]): Promise<string> {
-  let id = "";
-  let generateError = "";
-  await browser.waitUntil(
-    async () => {
-      const current = await readNodeIds();
-      id = current.find((candidate) => !previous.includes(candidate)) ?? "";
-      if (id) return true;
-      generateError =
-        (await browser.execute(() => {
-          const panel = document.querySelector<HTMLElement>('[data-testid="genimage-panel"]');
-          return panel?.querySelector<HTMLElement>('[role="alert"]')?.textContent?.trim() ?? "";
-        })) ?? "";
-      return Boolean(generateError);
-    },
-    { timeout: 30_000, timeoutMsg: "提交后没有出现新的 GenImage 节点，也没有生成错误提示" },
-  );
-  if (generateError) throw new Error(`GenImage 生成失败: ${generateError}`);
-  return id;
-}
-
-async function waitForMode(mode: "fixture" | "local"): Promise<void> {
-  await browser.waitUntil(
-    async () => (await $(workspace).getAttribute("data-genimage-mode")) === mode,
-    { timeout: 30_000, timeoutMsg: `GenImage 没有进入 ${mode} 模式` },
-  );
-}
-
-async function openGenImage(): Promise<void> {
-  await $(entry).waitForClickable({ timeout: 30_000 });
-  await $(entry).click();
-  await $(workspace).waitForDisplayed({ timeout: 30_000 });
-}
-
-async function enterLocalSimulation(expectedCount?: number): Promise<void> {
-  await $(localMode).waitForClickable({ timeout: 30_000 });
-  await $(localMode).click();
-  await waitForMode("local");
-  if (expectedCount === undefined) {
-    await $('[data-testid="genimage-empty"]').waitForDisplayed({ timeout: 30_000 });
-  } else {
-    await waitForNodeCount(expectedCount);
-  }
-}
-
-async function focusNode(id: string): Promise<void> {
-  // 完成的节点不会自动抢焦点；派生和详情前显式聚焦目标节点。
-  await browser.execute((nodeId) => {
-    const element = document.querySelector<HTMLElement>(`[data-genimage-node="${nodeId}"]`);
-    if (!element) throw new Error(`GenImage 节点不存在: ${nodeId}`);
-    element.focus({ preventScroll: true });
-  }, id);
-  await browser.waitUntil(
-    async () => (await $(node(id)).getAttribute("data-selected")) === "true",
-    { timeout: 10_000, timeoutMsg: `GenImage 节点没有被选中: ${id}` },
-  );
-}
-
-async function clickNodeAction(id: string, testId: string): Promise<void> {
-  await browser.execute(
-    (nodeId, actionTestId) => {
-      const button = document.querySelector<HTMLButtonElement>(
-        `[data-genimage-node="${nodeId}"] [data-testid="${actionTestId}"]`,
+describe("GENIMAGE-LOCAL persistent image canvas", () => {
+  it("caches an imported original, restores its position, previews and exports it", async function () {
+    this.timeout(180_000);
+    const directory = await mkdtemp(join(tmpdir(), "zcode-e2e-image-import-"));
+    try {
+      const sourcePath = join(directory, "image-canvas-fixture.png");
+      await writeFile(sourcePath, png);
+      await openImages();
+      await $('[data-testid="genimage-file-input"]').setValue(sourcePath);
+      const card = $("[data-genimage-node]");
+      await card.waitForDisplayed();
+      await expect(card.$("h3")).toHaveText("image-canvas-fixture.png");
+      const id = await card.getAttribute("data-genimage-node");
+      const oldVersion = await card.getAttribute("data-genimage-version");
+      assert.ok(id && oldVersion);
+      await browser.execute(() =>
+        document.querySelector<HTMLElement>("[data-genimage-node]")?.focus(),
       );
-      if (!button) throw new Error(`GenImage 节点动作不存在: ${actionTestId}`);
-      if (button.disabled) throw new Error(`GenImage 节点动作不可用: ${actionTestId}`);
-      button.click();
-    },
-    id,
-    testId,
-  );
-}
+      await browser.keys(["Shift", "ArrowRight"]);
+      await browser.waitUntil(
+        async () => (await card.getAttribute("data-genimage-version")) !== oldVersion,
+      );
+      const movedX = await card.getAttribute("data-genimage-x");
+      assert.ok(movedX);
 
-async function generate(prompt: string, sourceId?: string): Promise<string> {
-  const before = await readNodeIds();
-  if (sourceId) {
-    await focusNode(sourceId);
-    const derive = $(`${node(sourceId)} [data-testid="genimage-derive"]`);
-    await derive.waitForEnabled({ timeout: 10_000 });
-    await clickNodeAction(sourceId, "genimage-derive");
-  } else {
-    await $('[data-testid="genimage-new"]').click();
-  }
-  const promptInput = $('[data-testid="genimage-prompt"]');
-  await promptInput.waitForDisplayed({ timeout: 10_000 });
-  await promptInput.setValue(prompt);
-  const submit = $('[data-testid="genimage-submit"]');
-  await submit.waitForEnabled({ timeout: 10_000 });
-  await submit.click();
-  const id = await waitForNewNode(before);
-  await $(node(id)).waitForDisplayed({ timeout: 10_000 });
-  return id;
-}
+      await rm(sourcePath);
+      await reloadElectronSessionPreservingBrowserProfile(browser);
+      await openImages();
+      const restoredCard = $("[data-genimage-node]");
+      await restoredCard.waitForDisplayed();
+      await expect(restoredCard).toHaveAttribute("data-genimage-node", id);
+      await expect(restoredCard).toHaveAttribute("data-genimage-x", movedX);
 
-async function readNodePosition(id: string): Promise<NodePosition> {
-  const element = $(node(id));
-  const x = await element.getAttribute("data-genimage-x");
-  const y = await element.getAttribute("data-genimage-y");
-  const version = await element.getAttribute("data-genimage-version");
-  if (x === null || y === null) throw new Error(`GenImage 节点缺少坐标: ${id}`);
-  return { version: Number(version ?? "0"), x: Number(x), y: Number(y) };
-}
-
-async function nudgeRightAndWaitPersisted(id: string): Promise<NodePosition> {
-  const before = await readNodePosition(id);
-  await focusNode(id);
-  await browser
-    .action("key")
-    .down(Key.Shift)
-    .down(Key.ArrowRight)
-    .up(Key.ArrowRight)
-    .up(Key.Shift)
-    .perform();
-  await browser.waitUntil(
-    async () => {
-      const current = await readNodePosition(id);
-      return current.x > before.x && current.version > before.version;
-    },
-    { timeout: 15_000, timeoutMsg: "键盘微移没有提交新的节点坐标和版本" },
-  );
-  return readNodePosition(id);
-}
-
-async function closePanelIfOpen(): Promise<void> {
-  if (await $('[data-testid="genimage-panel"]').isExisting()) {
-    await browser.keys("Escape");
-    await $('[data-testid="genimage-panel"]').waitForExist({
-      reverse: true,
-      timeout: 10_000,
-    });
-  }
-}
-
-async function closeOriginalDialog(): Promise<void> {
-  if (await $('[data-testid="genimage-original-dialog"]').isExisting()) {
-    await browser.keys("Escape");
-    await $('[data-testid="genimage-original-dialog"]').waitForExist({
-      reverse: true,
-      timeout: 10_000,
-    });
-  }
-}
-
-async function locateFromHistory(id: string): Promise<void> {
-  await closeOriginalDialog();
-  await closePanelIfOpen();
-  await $('[data-testid="genimage-history"]').click();
-  const row = $(`[data-genimage-history="${id}"]`);
-  await row.waitForDisplayed({ timeout: 10_000 });
-  await row.click();
-  await browser.waitUntil(
-    async () => (await $(node(id)).getAttribute("data-selected")) === "true",
-    { timeout: 10_000, timeoutMsg: `历史记录没有定位到节点 ${id}` },
-  );
-}
-
-async function openOriginalPreview(id: string): Promise<string> {
-  await closeOriginalDialog();
-  await closePanelIfOpen();
-  await focusNode(id);
-  await clickNodeAction(id, "genimage-details");
-  await $('[data-testid="genimage-panel"]').waitForDisplayed({ timeout: 10_000 });
-  await $('[data-testid="genimage-preview"]').click();
-  await $('[data-testid="genimage-original-dialog"]').waitForDisplayed({ timeout: 10_000 });
-  await browser.waitUntil(
-    async () =>
-      (
-        (await browser.execute(
+      const trigger = restoredCard.$('[data-testid="genimage-preview"]');
+      await trigger.click();
+      const preview = $('[data-testid="genimage-original-dialog"]');
+      await preview.waitForDisplayed();
+      const original = $('[data-testid="genimage-original"]');
+      await original.waitForDisplayed();
+      await browser.waitUntil(() =>
+        browser.execute(
           () =>
-            document
-              .querySelector<HTMLImageElement>('[data-testid="genimage-original"]')
-              ?.getAttribute("src") ?? "",
-        )) as string
-      ).startsWith("zcode-media://local/preview?path="),
-    { timeout: 30_000, timeoutMsg: "原图预览没有加载 Host 授权的本机图片" },
-  );
-  return browser.execute(
-    () =>
-      document
-        .querySelector<HTMLImageElement>('[data-testid="genimage-original"]')
-        ?.getAttribute("src") ?? "",
-  ) as unknown as Promise<string>;
-}
+            document.querySelector<HTMLImageElement>('[data-testid="genimage-original"]')
+              ?.naturalWidth === 280,
+        ),
+      );
+      const originalSource = await original.getAttribute("src");
+      assert.ok(originalSource);
+      const authorizedUrl = new URL(originalSource);
+      expect(authorizedUrl.protocol).toBe("zcode-media:");
+      expect(await readFile(authorizedUrl.searchParams.get("path")!)).toEqual(png);
+      const geometry = await browser.execute(() => {
+        const dialog = document.querySelector('[data-testid="genimage-original-dialog"]');
+        const image = document.querySelector<HTMLImageElement>('[data-testid="genimage-original"]');
+        if (!dialog || !image) return null;
+        const viewport = image.closest("[data-image-preview-viewport]")?.getBoundingClientRect();
+        const bounds = image.getBoundingClientRect();
+        const frame = dialog.getBoundingClientRect();
+        return {
+          frame: { x: frame.x, y: frame.y, width: frame.width, height: frame.height },
+          window: { width: innerWidth, height: innerHeight },
+          fillsWindow:
+            Math.abs(frame.x) < 1 &&
+            Math.abs(frame.y) < 1 &&
+            Math.abs(frame.width - innerWidth) < 1 &&
+            Math.abs(frame.height - innerHeight) < 1,
+          fitsImage:
+            viewport &&
+            bounds.width > 0 &&
+            bounds.height > 0 &&
+            Math.abs(bounds.width / bounds.height - 280 / 180) < 0.02 &&
+            bounds.width <= viewport.width + 0.5 &&
+            bounds.height <= viewport.height + 0.5,
+        };
+      });
+      assert.ok(geometry?.fillsWindow && geometry.fitsImage, JSON.stringify(geometry));
+      const zoomIn = preview.$("button:has(svg.lucide-plus)");
+      await zoomIn.click();
+      await expect(preview.$("button=150%")).toBeDisplayed();
+      await preview.$("button=150%").click();
+      await expect(preview.$("button=100%")).toBeDisplayed();
 
-async function waitForFileHead(path: string, head: number[], timeoutMsg: string): Promise<void> {
-  await browser.waitUntil(
-    async () => {
-      try {
-        if ((await stat(path)).size < head.length) return false;
-        const bytes = await readFile(path);
-        return head.every((value, index) => bytes[index] === value);
-      } catch {
-        return false;
+      const toggle = $('[data-testid="genimage-feature-toggle"]');
+      await expect(toggle).toHaveAttribute("aria-expanded", "false");
+      await toggle.click();
+      await $('[data-testid="genimage-feature-details"]').waitForDisplayed();
+      expect(await $('[data-testid="genimage-feature-result"]').isExisting()).toBe(false);
+      if (process.env.ZCODE_E2E_ARTIFACT_DIR) {
+        await mkdir(process.env.ZCODE_E2E_ARTIFACT_DIR, { recursive: true });
+        await browser.saveScreenshot(
+          join(process.env.ZCODE_E2E_ARTIFACT_DIR, "images-preview.png"),
+        );
       }
-    },
-    { timeout: 20_000, timeoutMsg },
-  );
-}
+      await browser.keys("Escape");
+      await preview.waitForExist({ reverse: true });
+      await browser.waitUntil(() => trigger.isFocused());
 
-describe("GENIMAGE-LOCAL persistent local canvas", () => {
-  let tempDir = "";
-  let saveDialog: ElectronMock;
-
-  before(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "zcode-e2e-genimage-local-"));
+      await trigger.click();
+      const saveDialog = await browser.electron.mock("dialog", "showSaveDialog");
+      const exportPath = join(directory, "export.png");
+      await saveDialog.mockResolvedValueOnce({ canceled: false, filePath: exportPath });
+      const exportButton = $('[data-testid="genimage-export"]');
+      await exportButton.waitForEnabled();
+      await exportButton.click();
+      await browser.waitUntil(
+        async () => (await readFile(exportPath).catch(() => undefined))?.equals(png) === true,
+      );
+      await browser.keys("Escape");
+    } finally {
+      await browser.electron.restoreAllMocks();
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
-  after(async () => {
-    await browser.electron.restoreAllMocks();
-    await clearAppData();
-    if (tempDir) await rm(tempDir, { recursive: true, force: true });
-  });
-
-  it("生成 A → B/C → D，恢复坐标、历史和重启，并预览导出原图", async function () {
-    this.timeout(300_000);
-
-    // 本机模拟不依赖云凭据；测试启动前凭据库必须保持匿名。
-    const credentials = JSON.parse(
-      await readFile(getE2EAppDataPaths().credentialsFile, "utf8").catch(() => "{}"),
-    ) as Record<string, unknown>;
-    expect(
-      Object.keys(credentials).filter(
-        (key) => key.startsWith("oauth:") || key === "auth_token" || key === "zcodejwttoken",
-      ),
-    ).toEqual([]);
-
-    await waitForWorkspaceApp(DEFAULT_WORKSPACE, 60_000);
-    await openGenImage();
-    await enterLocalSimulation();
-    expect(await readNodeIds()).toEqual([]);
-
-    const rootId = await generate("GENIMAGE local root");
-    expect((await $(node(rootId)).getAttribute("data-source")) ?? "").toBe("");
-    expect(await $$(`${workspace} [data-genimage-node]`).length).toBe(1);
-
-    const childB = await generate("GENIMAGE local child B", rootId);
-    const childC = await generate("GENIMAGE local child C", rootId);
-    const childD = await generate("GENIMAGE local grandchild D", childB);
-    expect(await $(node(childB)).getAttribute("data-source")).toBe(rootId);
-    expect(await $(node(childC)).getAttribute("data-source")).toBe(rootId);
-    expect(await $(node(childD)).getAttribute("data-source")).toBe(childB);
-    expect(await readNodeIds()).toHaveLength(4);
-
-    // 历史行使用服务端 UUID；点击后关闭历史并选中目标节点。
-    await locateFromHistory(childD);
-    expect(await $(node(childD)).getAttribute("data-selected")).toBe("true");
-
-    // 坐标持久化：键盘微移提交坐标与版本，离开重进后必须保持。
-    await closePanelIfOpen();
-    const movedPosition = await nudgeRightAndWaitPersisted(childB);
-
-    await $('[data-testid="desktop-top-nav-back"]').click();
-    await $(workspace).waitForExist({ reverse: true, timeout: 10_000 });
-    await openGenImage();
-    await enterLocalSimulation(4);
-    expect(await readNodeIds()).toHaveLength(4);
-    expect(await readNodePosition(childB)).toEqual(movedPosition);
-
-    // 完整重启后从同一 scope 恢复节点、谱系、坐标和历史。
-    await reloadElectronSessionPreservingBrowserProfile(browser);
-    await waitForWorkspaceApp(DEFAULT_WORKSPACE, 60_000);
-    await $(entry).waitForClickable({ timeout: 60_000 });
-    await openGenImage();
-    await enterLocalSimulation(4);
-    expect(await readNodeIds()).toHaveLength(4);
-    expect(await $(node(childB)).getAttribute("data-source")).toBe(rootId);
-    expect(await $(node(childD)).getAttribute("data-source")).toBe(childB);
-    expect(await readNodePosition(childB)).toEqual(movedPosition);
-    await locateFromHistory(childC);
-    expect(await $(node(childC)).getAttribute("data-selected")).toBe("true");
-
-    // 原图预览与导出：预览指向 Host 授权的本机原图，导出字节必须与预览原图一致。
-    const previewSrc = await openOriginalPreview(childD);
-    const previewUrl = new URL(previewSrc);
-    expect(previewUrl.protocol).toBe("zcode-media:");
-    const originalPath = previewUrl.searchParams.get("path");
-    expect(originalPath).toBeTruthy();
-    const originalBytes = await readFile(originalPath!);
-    await closeOriginalDialog();
-
-    saveDialog = await browser.electron.mock("dialog", "showSaveDialog");
-    const exportPath = join(tempDir, "genimage-export.png");
-    await saveDialog.mockResolvedValueOnce({ canceled: false, filePath: exportPath });
-    const exportButton = $('[data-testid="genimage-export"]');
-    await exportButton.waitForEnabled({ timeout: 30_000 });
-    await exportButton.click();
-    await waitForFileHead(exportPath, [0x89, 0x50, 0x4e, 0x47], "GenImage 导出没有写出 PNG 文件");
-    await browser.waitUntil(async () => (await stat(exportPath)).size === originalBytes.length, {
-      timeout: 20_000,
-      timeoutMsg: "GenImage 导出文件没有写完整",
-    });
-    expect((await readFile(exportPath)).equals(originalBytes)).toBe(true);
+  it("retains a failed generation's request ID until a separate request is confirmed", async function () {
+    this.timeout(150_000);
+    if (!(await $(workspace).isDisplayed())) await waitForWorkspaceApp(DEFAULT_WORKSPACE, 60_000);
+    await clickTestIdByDom(TID_TASK_SETTINGS_BUTTON);
+    await clickTestIdByDom(testId(TID_SETTINGS_SECTION_NAV, "modelProvider"));
+    await $('[data-model-settings-group="image"]').click();
+    await $('[data-testid="image-model-name"]').setValue("E2E blocked image destination");
+    await $('[data-testid="image-model-id"]').setValue("fixture-image");
+    await $('[data-testid="image-model-url"]').setValue("https://127.0.0.1/v1");
+    await $('[data-testid="image-model-key"]').setValue("fixture-key");
+    await $('[data-testid="image-model-save"]').click();
+    await $('[data-testid="image-model-configured"]').waitForDisplayed();
+    await clickTestIdByDom("settings-back-button");
+    if (!(await $(workspace).isDisplayed())) await openImages();
+    await $('[data-testid="genimage-new"]').click();
+    await $('[data-testid="genimage-prompt"]').setValue("E2E_GENIMAGE_BLOCKED");
+    const submit = $('[data-testid="genimage-submit"]');
+    await submit.waitForEnabled();
+    await submit.click();
+    const newRequest = $('[data-testid="genimage-new-request"]');
+    await newRequest.waitForDisplayed();
+    const liveRoot = join(getE2EAppDataPaths().storageRoot, "genimage", "live");
+    const boardDirectories = await readdir(liveRoot);
+    const boardPath = join(liveRoot, boardDirectories[0]!, "board.json");
+    const readJobs = async () =>
+      (JSON.parse(await readFile(boardPath, "utf8")) as { jobs: Array<{ id: string }> }).jobs;
+    const first = await readJobs();
+    expect(first).toHaveLength(1);
+    await submit.click();
+    await newRequest.waitForEnabled();
+    expect(await readJobs()).toHaveLength(1);
+    await newRequest.click();
+    await $('[data-testid="confirm-dialog-confirm"]').click();
+    await newRequest.waitForExist({ reverse: true });
+    await submit.click();
+    await newRequest.waitForDisplayed();
+    const second = await readJobs();
+    expect(second).toHaveLength(2);
+    expect(second[0]!.id).not.toBe(second[1]!.id);
   });
 });

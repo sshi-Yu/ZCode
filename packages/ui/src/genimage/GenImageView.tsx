@@ -1,11 +1,11 @@
 import {
-  GitFork,
-  HardDrive,
+  ImagePlus,
   History,
   Info,
   Maximize,
   Minus,
   Plus,
+  ScanEye,
   SlidersHorizontal,
 } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
@@ -13,23 +13,22 @@ import type { KeyboardEvent, PointerEvent } from "react";
 import { Button } from "@/components/ui/button.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import type { GenImageViewProps, IGenImageService } from "./contract.js";
-import { initialNodes, MAX_NODES, NODE_HEIGHT, NODE_WIDTH } from "./fixture.js";
-import type { ImageNode, Ratio } from "./fixture.js";
 import { GenImageArtwork, nodeLabel, type CanvasNode } from "./GenImageArtwork.js";
-import { FixtureBadge, GenImagePanel, type PanelKind } from "./GenImagePanel.js";
+import { CanvasBadge, GenImagePanel, type PanelKind } from "./GenImagePanel.js";
 import { genImageText } from "./text.js";
-import { useGenImageLocal, useGenImageService } from "./useGenImageLocal.js";
+import {
+  useGenImageLocal,
+  useGenImageService,
+  useGenImageModel,
+  useGenImageFeatureModel,
+} from "./useGenImageLocal.js";
+import { GenImagePreview } from "./GenImagePreview.js";
+import { fitCamera, NODE_HEIGHT, NODE_WIDTH, zoomCamera, type Camera } from "./canvasGeometry.js";
 import "./genimage.css";
 
-interface Camera {
-  x: number;
-  y: number;
-  scale: number;
-}
 interface Panel {
   kind: PanelKind;
   trigger: HTMLElement | null;
-  source?: string;
 }
 interface Drag {
   pointer: number;
@@ -42,53 +41,37 @@ interface Drag {
   moved: boolean;
 }
 
-function fitCamera(
-  nodes: readonly CanvasNode[],
-  width: number,
-  height: number,
-  initial: boolean,
-): Camera {
-  if (!nodes.length) return { x: width / 2, y: height / 2, scale: 1 };
-  const left = Math.min(...nodes.map((node) => node.x));
-  const right = Math.max(...nodes.map((node) => node.x + NODE_WIDTH));
-  const top = Math.min(...nodes.map((node) => node.y));
-  const bottom = Math.max(...nodes.map((node) => node.y + NODE_HEIGHT));
-  const scale = Math.max(
-    0.02,
-    Math.min(1, (width - 40) / (right - left), (height - 160) / (bottom - top)),
-  );
-  const freeWidth = width - (right - left) * scale;
-  const freeHeight = height - (bottom - top) * scale;
+function edgePaths(parent: CanvasNode, child: CanvasNode, scale: number) {
+  const deltaX = child.x - parent.x;
+  const deltaY = child.y - parent.y;
+  const horizontal = Math.abs(deltaX) > NODE_WIDTH;
+  const span = horizontal ? NODE_WIDTH : NODE_HEIGHT;
+  const delta = horizontal ? deltaX : deltaY;
+  const gap = Math.abs(delta) - span;
+  if (gap <= 0) return;
+
+  const direction = Math.sign(delta);
+  const start = (horizontal ? parent.x : parent.y) + (direction > 0 ? span : 0);
+  const end = start + direction * (gap - Math.min(8, gap / 4));
+  const crossSpan = (horizontal ? NODE_HEIGHT : NODE_WIDTH) / 2;
+  const from = (horizontal ? parent.y : parent.x) + crossSpan;
+  const to = (horizontal ? child.y : child.x) + crossSpan;
+  const point = (axis: number, cross: number) =>
+    horizontal ? `${axis} ${cross}` : `${cross} ${axis}`;
+  // 短间距时固定控制柄会越过端点，导致连线在箭头前倒弯。
+  const bend = direction * Math.min(120, Math.abs(end - start) / 2);
+  const arrowLength = Math.min(8 / scale, Math.abs(end - start) / 2);
+  const arrowWidth = arrowLength * 0.55;
+  const base = end - direction * arrowLength;
   return {
-    x: (initial ? Math.min(116, freeWidth / 2) : freeWidth / 2) - left * scale,
-    y: (initial ? Math.min(84, freeHeight / 2) : freeHeight / 2) - top * scale,
-    scale,
+    line: `M${point(start, from)} C${point(start + bend, from)} ${point(end - bend, to)} ${point(end, to)}`,
+    arrow: `M${point(base, to - arrowWidth)} L${point(end, to)} ${point(base, to + arrowWidth)}`,
   };
 }
 
-function zoomCamera(camera: Camera, factor: number, x: number, y: number): Camera {
-  const scale = Math.min(2, Math.max(0.02, camera.scale * factor));
-  const multiplier = scale / camera.scale;
-  return { scale, x: x - (x - camera.x) * multiplier, y: y - (y - camera.y) * multiplier };
-}
-
-function edgePath(parent: CanvasNode, child: CanvasNode) {
-  const rightward = child.x >= parent.x;
-  const startX = parent.x + (rightward ? NODE_WIDTH : 0);
-  const endX = child.x + (rightward ? -4 : NODE_WIDTH + 4);
-  const startY = parent.y + NODE_HEIGHT / 2;
-  const endY = child.y + NODE_HEIGHT / 2;
-  const bend = Math.max(46, Math.abs(endX - startX) / 2) * (rightward ? 1 : -1);
-  return `M${startX} ${startY} C${startX + bend} ${startY} ${endX - bend} ${endY} ${endX} ${endY}`;
-}
-
-function nextPosition(nodes: readonly CanvasNode[], source?: CanvasNode) {
-  const x = source
-    ? source.x + 360
-    : nodes.length
-      ? Math.max(...nodes.map((node) => node.x)) + 360
-      : 0;
-  let y = source?.y ?? 184;
+function nextPosition(nodes: readonly CanvasNode[]) {
+  const x = nodes.length ? Math.max(...nodes.map((node) => node.x)) + 360 : 0;
+  let y = 184;
   while (
     nodes.some(
       (node) => Math.abs(node.x - x) < NODE_WIDTH + 16 && Math.abs(node.y - y) < NODE_HEIGHT + 16,
@@ -100,19 +83,11 @@ function nextPosition(nodes: readonly CanvasNode[], source?: CanvasNode) {
 
 export function GenImageView(props: GenImageViewProps) {
   const service = useGenImageService();
-  return <GenImageMode key={props.localScope} {...props} service={service} />;
-}
-
-function GenImageMode({ service, ...props }: GenImageViewProps & { service?: IGenImageService }) {
-  const [localMode, setLocalMode] = useState(false);
-  const available = service && props.localScope !== undefined;
-  const localService = localMode && available ? service : undefined;
   return (
     <GenImageCanvas
-      key={localService ? "local" : "fixture"}
+      key={props.localScope}
       {...props}
-      localService={localService}
-      onToggleMode={available ? () => setLocalMode((active) => !active) : undefined}
+      localService={props.localScope === undefined ? undefined : service}
     />
   );
 }
@@ -123,19 +98,25 @@ function GenImageCanvas({
   localService,
   localScope = "",
   localScopeName,
-  onToggleMode,
-}: GenImageViewProps & { localService?: IGenImageService; onToggleMode?: () => void }) {
+  onOpenModelSettings,
+}: GenImageViewProps & {
+  localService?: IGenImageService;
+}) {
   const { locale } = useZCodeIntl();
   const text = genImageText(locale);
   const local = useGenImageLocal(localService, localScope);
-  const localMode = !!localService;
-  const ready = !localMode || local.ready;
-  const [fixtures, setFixtures] = useState<readonly ImageNode[]>(initialNodes);
+  const imageModel = useGenImageModel(!!localService);
+  const featureModel = useGenImageFeatureModel(!!localService);
+  const ready = local.ready;
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, scale: 1 });
-  const [selectedId, setSelectedId] = useState<string | null>(localMode ? null : "B");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [prompt, setPrompt] = useState("");
-  const [ratio, setRatio] = useState<Ratio>("4:3");
+  const [preview, setPreview] = useState<{
+    id: string;
+    trigger: HTMLElement;
+    showFeatures?: boolean;
+  }>();
   const [dragging, setDragging] = useState(false);
   const [dragPosition, setDragPosition] = useState<{ id: string; x: number; y: number }>();
   const [announcement, setAnnouncement] = useState("");
@@ -145,17 +126,15 @@ function GenImageCanvas({
   const helpButton = useRef<HTMLButtonElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const promptInput = useRef<HTMLTextAreaElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
   const drag = useRef<Drag | null>(null);
   const framed = useRef(false);
   const panelId = useId();
-  const arrowId = useId();
-  const nodes: readonly CanvasNode[] = localMode
-    ? local.nodes.map((node) =>
-        node.id === dragPosition?.id ? { ...node, x: dragPosition.x, y: dragPosition.y } : node,
-      )
-    : fixtures;
+  const nodes: readonly CanvasNode[] = local.nodes.map((node) =>
+    node.id === dragPosition?.id ? { ...node, x: dragPosition.x, y: dragPosition.y } : node,
+  );
   const selected = nodes.find((node) => node.id === selectedId);
-  const source = nodes.find((node) => node.id === panel?.source);
+  const previewNode = nodes.find((node) => node.id === preview?.id);
   const nodeIndex = new Map(nodes.map((node) => [node.id, node]));
 
   useLayoutEffect(() => {
@@ -168,8 +147,8 @@ function GenImageCanvas({
     const element = viewport.current;
     if (!element || framed.current || !ready) return;
     framed.current = true;
-    setCamera(fitCamera(nodes, element.clientWidth, element.clientHeight, !localMode));
-  }, [localMode, nodes, ready]);
+    setCamera(fitCamera(nodes, element.clientWidth, element.clientHeight, false));
+  }, [nodes, ready]);
 
   useEffect(() => {
     if (panel)
@@ -254,13 +233,7 @@ function GenImageCanvas({
 
   function commitPosition(node: CanvasNode, x: number, y: number) {
     if (node.x === x && node.y === y) return;
-    if ("version" in node) {
-      local.moveNode(node, { x, y });
-      return;
-    }
-    setFixtures((previous) =>
-      previous.map((fixture) => (fixture.id === node.id ? { ...fixture, x, y } : fixture)),
-    );
+    local.moveNode(node, { x, y });
   }
 
   function beginDrag(event: PointerEvent<HTMLDivElement>) {
@@ -300,8 +273,7 @@ function GenImageCanvas({
     if (current.node) {
       const x = current.x + dx / current.scale;
       const y = current.y + dy / current.scale;
-      if (localMode) setDragPosition({ id: current.node.id, x, y });
-      else commitPosition(nodeIndex.get(current.node.id) ?? current.node, x, y);
+      setDragPosition({ id: current.node.id, x, y });
     } else setCamera((previous) => ({ ...previous, x: current.x + dx, y: current.y + dy }));
   }
 
@@ -311,7 +283,7 @@ function GenImageCanvas({
     drag.current = null;
     setDragging(false);
     setDragPosition(undefined);
-    if (current.node && localMode && current.moved && event.type === "pointerup") {
+    if (current.node && current.moved && event.type === "pointerup") {
       commitPosition(
         current.node,
         current.x + (event.clientX - current.clientX) / current.scale,
@@ -326,72 +298,106 @@ function GenImageCanvas({
 
   async function submit() {
     const description = prompt.trim();
-    if (!description || !ready || panel?.kind !== "create" || (panel.source && !source)) return;
-    if (localMode) {
-      const first = nodes.length === 0;
-      const element = viewport.current;
-      if (!element) return;
-      const position = first
-        ? {
-            x: (element.clientWidth / 2 - camera.x) / camera.scale - NODE_WIDTH / 2,
-            y: (element.clientHeight / 2 - camera.y) / camera.scale - NODE_HEIGHT / 2,
-          }
-        : nextPosition(nodes, source);
-      const node = await local.generate({
-        ...position,
-        sourceId: source?.id ?? null,
-        prompt: description,
-        ratio,
-      });
-      if (!node || !viewport.current) return;
-      setAnnouncement(text.added(nodeLabel(node)));
-      if (currentPanel.current !== panel) return;
-      const formHadFocus = promptInput.current?.form?.contains(document.activeElement);
-      setPrompt("");
-      changePanel(null);
-      if (first) {
-        const { clientWidth, clientHeight } = element;
-        setCamera((previous) => {
-          const left = previous.x + node.x * previous.scale;
-          const top = previous.y + node.y * previous.scale;
-          const right = left + NODE_WIDTH * previous.scale;
-          const bottom = top + NODE_HEIGHT * previous.scale;
-          if (left >= 0 && top >= 0 && right <= clientWidth && bottom <= clientHeight) {
-            return previous;
-          }
-          return fitCamera([node], clientWidth, clientHeight, false);
-        });
-      }
-      if (formHadFocus) {
-        if (panel.trigger?.isConnected) panel.trigger.focus({ preventScroll: true });
-        else viewport.current.focus({ preventScroll: true });
-      }
+    if (
+      !description ||
+      !ready ||
+      panel?.kind !== "create" ||
+      imageModel.revision === undefined ||
+      !imageModel.model?.configured
+    )
       return;
-    }
-    if (fixtures.length >= MAX_NODES) return;
-    const id = String.fromCharCode(65 + fixtures.length);
-    setFixtures([
-      ...fixtures,
-      {
-        ...nextPosition(nodes, source),
-        id,
-        ratio,
-        source: source?.id ?? null,
-        prompt: description,
-        title: source ? text.deriveTitle : text.newTitle,
-        artwork: (source && "artwork" in source ? source.artwork + 1 : fixtures.length) % 3,
-      },
-    ]);
-    if (panel?.trigger?.isConnected && !source) panel.trigger.focus({ preventScroll: true });
-    else viewport.current?.focus({ preventScroll: true });
-    setSelectedId(id);
+    const first = nodes.length === 0;
+    const element = viewport.current;
+    if (!element) return;
+    const position = first
+      ? {
+          x: (element.clientWidth / 2 - camera.x) / camera.scale - NODE_WIDTH / 2,
+          y: (element.clientHeight / 2 - camera.y) / camera.scale - NODE_HEIGHT / 2,
+        }
+      : nextPosition(nodes);
+    const node = await local.generate({
+      ...position,
+      prompt: description,
+      modelRevision: imageModel.revision,
+    });
+    if (!node || !viewport.current) return;
+    setAnnouncement(text.liveAdded(nodeLabel(node)));
+    if (currentPanel.current !== panel) return;
+    const formHadFocus = promptInput.current?.form?.contains(document.activeElement);
+    setPrompt("");
     changePanel(null);
-    setAnnouncement(text.added(id));
+    if (first) {
+      const { clientWidth, clientHeight } = element;
+      setCamera((previous) => {
+        const left = previous.x + node.x * previous.scale;
+        const top = previous.y + node.y * previous.scale;
+        const right = left + NODE_WIDTH * previous.scale;
+        const bottom = top + NODE_HEIGHT * previous.scale;
+        if (left >= 0 && top >= 0 && right <= clientWidth && bottom <= clientHeight) {
+          return previous;
+        }
+        return fitCamera([node], clientWidth, clientHeight, false);
+      });
+    }
+    if (formHadFocus) {
+      if (panel.trigger?.isConnected) panel.trigger.focus({ preventScroll: true });
+      else viewport.current.focus({ preventScroll: true });
+    }
+  }
+
+  async function importFiles(files: File[]) {
+    const element = viewport.current;
+    if (!element || !files.length) return;
+    const stepX = NODE_WIDTH + 48;
+    const stepY = NODE_HEIGHT + 48;
+    const columns = Math.max(
+      1,
+      Math.min(files.length, 4, Math.floor(element.clientWidth / camera.scale / stepX)),
+    );
+    const left = (element.clientWidth / 2 - camera.x) / camera.scale - (columns * stepX - 48) / 2;
+    const top = (element.clientHeight / 2 - camera.y) / camera.scale - NODE_HEIGHT / 2;
+    let slot = 0;
+    const result = await local.importFiles(files, () => {
+      let position: Pick<Camera, "x" | "y">;
+      do {
+        position = {
+          x: left + (slot % columns) * stepX,
+          y: top + Math.floor(slot / columns) * stepY,
+        };
+        slot += 1;
+      } while (
+        nodes.some(
+          (node) =>
+            Math.abs(node.x - position.x) < NODE_WIDTH + 16 &&
+            Math.abs(node.y - position.y) < NODE_HEIGHT + 16,
+        )
+      );
+      return position;
+    });
+    if (!result) return;
+    setAnnouncement(text.importResult(result.imported.length, result.failed));
+    const { clientWidth, clientHeight } = element;
+    if (
+      result.imported.some((node) => {
+        const left = camera.x + node.x * camera.scale;
+        const top = camera.y + node.y * camera.scale;
+        return (
+          left < 0 ||
+          top < 0 ||
+          left + NODE_WIDTH * camera.scale > clientWidth ||
+          top + NODE_HEIGHT * camera.scale > clientHeight
+        );
+      })
+    ) {
+      setCamera((current) =>
+        current === camera ? fitCamera(result.imported, clientWidth, clientHeight, false) : current,
+      );
+    }
   }
 
   function keyDown(event: KeyboardEvent<HTMLElement>) {
     const { key, target } = event;
-    if (!(target instanceof Node) || !event.currentTarget.contains(target)) return;
+    if (preview || !(target instanceof Node) || !event.currentTarget.contains(target)) return;
     if (key === "Escape" && panel) {
       event.preventDefault();
       event.stopPropagation();
@@ -430,18 +436,19 @@ function GenImageCanvas({
     event.preventDefault();
   }
 
-  const openDerive = (id: string, trigger: HTMLButtonElement) =>
-    changePanel({ kind: "create", trigger, source: id });
+  function openPreview(id: string, trigger: HTMLElement, showFeatures = false) {
+    setPreview({ id, trigger, showFeatures });
+    featureModel.refresh();
+  }
   const localScopeLabel =
-    localScopeName?.trim() || (localScope ? text.localMode : text.localPersonal);
+    localScopeName?.trim() || (localScope ? text.workspace : text.localPersonal);
 
   return (
     <main
       className="genimage-view"
       data-testid="genimage-workspace"
       data-sidebar-collapsed={sidebarCollapsed}
-      data-genimage-mode={localMode ? "local" : "fixture"}
-      aria-label="GenImage"
+      aria-label={text.moduleName}
       onKeyDown={keyDown}
     >
       <div
@@ -466,31 +473,17 @@ function GenImageCanvas({
           style={{ transform: `translate(${camera.x}px, ${camera.y}px) scale(${camera.scale})` }}
         >
           <svg className="gi-edges" aria-hidden="true">
-            <defs>
-              <marker
-                id={arrowId}
-                viewBox="0 0 8 8"
-                refX="7"
-                refY="4"
-                markerWidth="7"
-                markerHeight="7"
-                orient="auto"
-              >
-                <path d="M0 0 8 4 0 8Z" />
-              </marker>
-            </defs>
             {nodes.map((node) => {
               const parent = node.source && nodeIndex.get(node.source);
-              return parent ? (
-                <path
-                  key={node.id}
-                  data-genimage-edge={node.id}
-                  data-source={parent.id}
-                  data-related={node.id === selectedId || parent.id === selectedId}
-                  d={edgePath(parent, node)}
-                  markerEnd={`url(#${arrowId})`}
-                />
-              ) : null;
+              if (!parent) return null;
+              const paths = edgePaths(parent, node, camera.scale);
+              if (!paths) return null;
+              return (
+                <g key={node.id} data-related={node.id === selectedId || parent.id === selectedId}>
+                  <path data-genimage-edge={node.id} data-source={parent.id} d={paths.line} />
+                  <path data-genimage-arrow={node.id} d={paths.arrow} />
+                </g>
+              );
             })}
           </svg>
           {nodes.map((node) => (
@@ -501,7 +494,7 @@ function GenImageCanvas({
               data-source={node.source ?? ""}
               data-genimage-x={node.x}
               data-genimage-y={node.y}
-              data-genimage-version={"version" in node ? node.version : undefined}
+              data-genimage-version={node.version}
               data-selected={node.id === selectedId}
               tabIndex={0}
               aria-label={`${nodeLabel(node)} · ${node.title}`}
@@ -513,7 +506,7 @@ function GenImageCanvas({
                   (event.key === "Enter" || event.key === " ")
                 ) {
                   event.preventDefault();
-                  togglePanel("details", event.currentTarget);
+                  openPreview(node.id, event.currentTarget);
                 }
               }}
             >
@@ -522,7 +515,7 @@ function GenImageCanvas({
                   <code>{nodeLabel(node)}</code>{" "}
                   {node.source ? `${text.derived} ${node.source.slice(0, 8)}` : text.root}
                 </span>
-                <FixtureBadge>{localMode ? text.localMode : text.fixture}</FixtureBadge>
+                <CanvasBadge>{node.fileName ? text.imported : text.generated}</CanvasBadge>
               </header>
               <GenImageArtwork
                 node={node}
@@ -530,15 +523,31 @@ function GenImageCanvas({
                 loadThumbnail={local.media?.thumbnail}
               />
               <footer>
-                <div>
-                  <h3>{node.title}</h3>
+                <div className="min-w-0 flex-1">
+                  <h3 className="truncate">{node.fileName ?? node.title}</h3>
                   <p>
-                    {localMode
-                      ? `${node.ratio} · ${text.localSaved}`
-                      : `${text.localArt} · ${node.ratio} · ${text.noExport}`}
+                    {node.width} × {node.height}
                   </p>
+                  {node.features ? (
+                    <ul className="gi-tags" aria-label={text.features}>
+                      {node.features.tags.slice(0, 3).map((tag) => (
+                        <li key={tag} title={tag}>
+                          {tag}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </div>
-                <GitFork size={16} aria-hidden="true" />
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  type="button"
+                  aria-label={text.preview}
+                  data-testid="genimage-preview"
+                  onClick={(event) => openPreview(node.id, event.currentTarget)}
+                >
+                  <Maximize />
+                </Button>
               </footer>
               {node.id === selectedId ? (
                 <div className="gi-float gi-node-actions" style={{ scale: 1 / camera.scale }}>
@@ -554,12 +563,13 @@ function GenImageCanvas({
                   </Button>
                   <Button
                     type="button"
-                    data-testid="genimage-derive"
-                    disabled={local.generating}
-                    onClick={(event) => openDerive(node.id, event.currentTarget)}
+                    variant="ghost"
+                    size="icon"
+                    aria-label={text.features}
+                    data-testid="genimage-card-features"
+                    onClick={(event) => openPreview(node.id, event.currentTarget, true)}
                   >
-                    <GitFork />
-                    {text.derive}
+                    <ScanEye />
                   </Button>
                 </div>
               ) : null}
@@ -569,8 +579,34 @@ function GenImageCanvas({
       </div>
       <header className="gi-top">
         <div className="gi-float gi-toolbar gi-brand">
-          <h1>GenImage</h1>
+          <h1>{text.moduleName}</h1>
           <i aria-hidden="true" />
+          <Button
+            type="button"
+            variant="outline"
+            aria-label={text.importAsset}
+            data-testid="genimage-import"
+            disabled={!ready || local.importing}
+            onClick={() => fileInput.current?.click()}
+          >
+            <ImagePlus />
+            <span>{text.importAsset}</span>
+          </Button>
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            accept="image/png,image/jpeg"
+            className="sr-only"
+            tabIndex={-1}
+            aria-label={text.importAsset}
+            data-testid="genimage-file-input"
+            onChange={(event) => {
+              const files = Array.from(event.currentTarget.files ?? []);
+              event.currentTarget.value = "";
+              void importFiles(files);
+            }}
+          />
           <Button
             ref={newButton}
             type="button"
@@ -614,17 +650,21 @@ function GenImageCanvas({
         {windowControls}
       </header>
       <div className="gi-note">
-        <p>{localMode ? localScopeLabel : text.workspace}</p>
-        {localMode ? <p>{text.localSaved}</p> : <p>{text.tagline}</p>}
-        {localMode ? null : <p>{text.notice}</p>}
+        <p>{localScopeLabel}</p>
+        <p>{text.localSaved}</p>
+        {local.unconfirmed > 0 ? <p role="status">{text.livePending}</p> : null}
       </div>
-      {localMode && (!ready || !nodes.length) ? (
+      {!ready || !nodes.length ? (
         <div className="gi-empty">
           <p
             role={local.loadError ? "alert" : "status"}
             data-testid={ready ? "genimage-empty" : "genimage-loading"}
           >
-            {ready ? text.localEmpty : local.loadError ? text.localLoadFailed : text.localLoading}
+            {ready
+              ? text.localEmpty
+              : !localService || local.loadError
+                ? text.localLoadFailed
+                : text.localLoading}
           </p>
           {!ready && local.loadError ? (
             <Button type="button" variant="outline" onClick={local.reload}>
@@ -668,22 +708,7 @@ function GenImageCanvas({
       <p className="gi-gesture">{text.gesture}</p>
       <div className="gi-float gi-toolbar gi-status">
         <i aria-hidden="true" />
-        <span>{localMode ? text.localSaved : text.mode}</span>
-        {localMode ? null : <FixtureBadge>{text.fixture}</FixtureBadge>}
-        {onToggleMode ? (
-          <Button
-            type="button"
-            variant="ghost"
-            aria-label={text.localMode}
-            aria-pressed={localMode}
-            title={text.localMode}
-            data-testid="genimage-local-mode"
-            onClick={onToggleMode}
-          >
-            <HardDrive />
-            <span>{text.localMode}</span>
-          </Button>
-        ) : null}
+        <span>{text.localSaved}</span>
         <Button
           ref={helpButton}
           type="button"
@@ -700,22 +725,46 @@ function GenImageCanvas({
           kind={panel.kind}
           text={text}
           nodes={nodes}
-          source={source}
           selected={selected}
           media={local.media}
           generating={local.generating}
           generateError={local.generateError}
+          imageModel={imageModel.model}
+          onRefreshModel={imageModel.refresh}
+          onNewRequest={local.resetRequest}
           prompt={prompt}
-          ratio={ratio}
           panelId={panelId}
           promptRef={promptInput}
           closeRef={closeButton}
           onChangePrompt={setPrompt}
-          onChangeRatio={setRatio}
           onClose={closePanel}
           onSubmit={() => void submit()}
-          onDerive={openDerive}
+          onPreview={openPreview}
+          featureModel={featureModel.settings}
+          onOpenSettings={onOpenModelSettings}
           onLocate={locate}
+        />
+      ) : null}
+      {preview && previewNode && local.media ? (
+        <GenImagePreview
+          key={preview.id}
+          node={previewNode}
+          initialDetails={preview.showFeatures}
+          media={local.media}
+          text={text}
+          trigger={preview.trigger}
+          onClose={() => setPreview(undefined)}
+          featureModel={featureModel.settings}
+          pending={local.featurePending}
+          error={local.featureError?.id === preview.id ? local.featureError.code : undefined}
+          onExtract={(revision, routeKey) =>
+            void local.extractFeatures(preview.id, revision, routeKey)
+          }
+          onRefreshModel={() => {
+            featureModel.refresh();
+            local.clearFeatureError();
+          }}
+          onOpenModelSettings={onOpenModelSettings}
         />
       ) : null}
       {local.moveError ? (

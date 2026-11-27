@@ -2942,6 +2942,7 @@ const enUS: Record<string, string> = {
   "workspace.openWorkspace": "Open workspace",
   "workspace.openFolder": "Open folder",
   "workspace.openPluginsSettings": "Plugin Marketplace",
+  "workspace.openImages": "Images",
   "workspace.backToWorkspace": "Back to workspace",
   "workspace.wslUncPrompt.title": "Open this through WSL remote connection?",
   "workspace.wslUncPrompt.description":
@@ -5595,6 +5596,10 @@ const enUS: Record<string, string> = {
   "settings.modelProvider.deleteConfirmAction": "Delete provider",
   "settings.modelProvider.testModel": "Test model",
   "settings.modelProvider.utilityModel.label": "Utility model",
+  "settings.modelProvider.featureModel.label": "Image feature model",
+  "settings.modelProvider.featureModel.set": "Set as image feature model",
+  "settings.modelProvider.featureModel.clear": "Clear image feature model",
+  "settings.modelProvider.featureModel.saveFailed": "Could not save the image feature model. Refresh and try again.",
   "settings.modelProvider.utilityModel.set": "Mark as utility model",
   "settings.modelProvider.utilityModel.clear": "Clear utility model marker",
   "settings.modelProvider.utilityModel.saveFailed": "Could not save the utility model. Try again.",

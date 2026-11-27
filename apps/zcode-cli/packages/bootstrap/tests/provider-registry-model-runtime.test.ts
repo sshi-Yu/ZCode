@@ -10,6 +10,7 @@ import {
   ZhipuAccountAccessConfig,
   type Provider,
 } from "@zcode/provider";
+import { providerRouteKey } from "@zcode/provider-node";
 import { describe, expect, it, vi } from "vitest";
 import { ApiProviderModelRuntime } from "../src/app/provider-registry-model-runtime.js";
 import {
@@ -136,6 +137,29 @@ describe("ApiProviderModelRuntime", () => {
     runtime.modelFactory({ selection: selection() });
     expect(created[0]?.providerConfig).toBe(first.config);
     expect(created[1]?.providerConfig).toBe(second.config);
+  });
+
+  it("rejects an image feature request for a previously confirmed provider route", () => {
+    const first = provider();
+    const registry = new ProviderRegistry([first]);
+    const { created, runtime } = captureRuntime(registry);
+    const expectedProviderRouteKey = providerRouteKey(first.config);
+    const request = { selection: selection(), expectedProviderRouteKey };
+    runtime.modelFactory(request);
+    const second = provider(
+      first.providerId,
+      createApiKeyProviderConfig({
+        apiFormat: "openai-chat-completions",
+        apiKey: "another-test-key",
+        baseURL: "https://new.example.com",
+        models: ["model-a"],
+      }),
+    );
+    registry.replace([second], "change feature destination");
+    expect(() => runtime.modelFactory(request)).toThrow(
+      "specialized-model-settings.revision-conflict",
+    );
+    expect(created).toHaveLength(1);
   });
 
   it("Account Provider 直接传递账号访问配置", () => {

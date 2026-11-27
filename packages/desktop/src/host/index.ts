@@ -1428,6 +1428,11 @@ const pendingStartupAttachments = new Map<string, () => void>();
 let activeServices: ServiceCollection | null = null;
 let createSpecializedModelSettingsAttachment: (() => ISpecializedModelSettingsService) | undefined;
 let genImageService: IGenImageService | undefined;
+let resolveGenImageModel:
+  | NonNullable<Parameters<typeof createGenImageService>[0]["resolveModel"]>
+  | undefined;
+let resolveImageFeatureModel: Parameters<typeof createGenImageService>[0]["resolveFeatureModel"];
+let extractImageFeatures: Parameters<typeof createGenImageService>[0]["extractImageFeatures"];
 // 扩展门面（docs/plugins/extension-host.md）：InitLocal 建立服务后创建，Host 退出时断开扩展进程端口。
 let windowHostExtensions: WindowHostExtensions | null = null;
 /**
@@ -2498,7 +2503,19 @@ function exposeServicesOnMessagePort(
   }
   if (clientMode === "desktop-continuous" && attachmentScope.kind === "local") {
     genImageService ??= createGenImageService({
-      dataDir: join(getZCodeDataRootDir(), "genimage", "simulation"),
+      dataDir: join(getZCodeDataRootDir(), "genimage", "live"),
+      resolveModel: async (revision) => {
+        if (!resolveGenImageModel) throw new Error("genimage.model-unavailable");
+        return resolveGenImageModel(revision);
+      },
+      resolveFeatureModel: async (revision, routeKey) => {
+        if (!resolveImageFeatureModel) throw new Error("genimage.feature-unavailable");
+        return resolveImageFeatureModel(revision, routeKey);
+      },
+      extractImageFeatures: async (input) => {
+        if (!extractImageFeatures) throw new Error("genimage.feature-unavailable");
+        return extractImageFeatures(input);
+      },
       createPreviewUrl: async (path) =>
         buildLocalMediaPreviewUrl(await authorizeLocalMediaPreviewPath(path)),
     });
@@ -3679,8 +3696,16 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
               onAppControlServiceCreated: (handle) => {
                 appControlForExtensions = handle;
               },
-              onSpecializedModelSettingsCreated: (createAttachment) => {
+              onSpecializedModelSettingsCreated: (
+                createAttachment,
+                resolveImageModel,
+                resolveFeatureModel,
+                extractFeatures,
+              ) => {
                 createSpecializedModelSettingsAttachment = createAttachment;
+                resolveGenImageModel = resolveImageModel;
+                resolveImageFeatureModel = resolveFeatureModel;
+                extractImageFeatures = extractFeatures;
               },
               // 插件管理变更在 Window Host 成功返回后重推扩展进程的插件清单（§3.4），
               // 配置与重置另通知该插件的扩展设置订阅者（§16.7）。

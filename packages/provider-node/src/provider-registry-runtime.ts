@@ -1,14 +1,29 @@
+import { createHash } from "node:crypto";
 import {
   ProviderRegistryService,
   MutableAccountProviderConfigSource,
   createFailClosedAccountProviderConfigSnapshot,
   type AccountProviderConfigSnapshot,
+  type ProviderConfigObject,
   type ProviderSource,
 } from "@zcode/provider";
 import {
   NodeProviderConfigRuntime,
   type NodeProviderConfigRuntimeOptions,
 } from "./provider-config-runtime.js";
+
+export function providerRouteKey({ api, access }: Pick<ProviderConfigObject, "api" | "access">) {
+  return createHash("sha256")
+    .update(
+      JSON.stringify([
+        api?.type,
+        api?.baseUrl,
+        access?.type,
+        access?.type === "zhipu-account" ? access.mode : null,
+      ]),
+    )
+    .digest("hex");
+}
 
 export interface NodeProviderRegistryRuntimeOptions extends NodeProviderConfigRuntimeOptions {
   readonly accountSource?: ProviderSource<AccountProviderConfigSnapshot>;

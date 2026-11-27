@@ -6089,6 +6089,39 @@ describe("ZCodeProtocolAgentServer", () => {
     expect(generateWorkspaceText.mock.calls[0]?.[0]).not.toHaveProperty("modelSelection");
   });
 
+  it("passes bounded image feature input to a detached workspace app", async () => {
+    const generateWorkspaceText = vi.fn(async () => ({
+      text: '{"summary":"A test image","tags":["test"]}',
+      selection: { providerId: "glm", modelId: "glm-4.6" },
+      finishReason: "stop",
+    }));
+    const createZCodeApp = vi.fn((options) => createFakeApp(options, { generateWorkspaceText }));
+    const server = new ZCodeProtocolAgentServer({ createZCodeApp, cwd: workspace.workspacePath });
+    await requestResult(server, {
+      id: 1,
+      method: zcodeProtocolMethods.sessionCreate,
+      params: { workspace },
+    });
+    const image = "iVBORw0KGgo=";
+    const featureRouteKey = "1".repeat(64);
+    await requestResult(server, {
+      id: 2,
+      method: zcodeProtocolMethods.workspaceGenerateText,
+      params: {
+        workspace,
+        selection: { providerId: "glm", modelId: "glm-4.6" },
+        querySource: "genimage_features",
+        featureImage: image,
+        featureRouteKey,
+      },
+    });
+    expect(createZCodeApp).toHaveBeenCalledTimes(2);
+    expect(generateWorkspaceText).toHaveBeenCalledWith(
+      expect.objectContaining({ featureImage: image, featureRouteKey }),
+      expect.anything(),
+    );
+  });
+
   it("tests provider connectivity through the selected formal Model", async () => {
     const calls: string[] = [];
     const refreshProviderRegistry = vi.fn(async () => {

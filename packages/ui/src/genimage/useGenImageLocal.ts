@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useOptionalPlatform } from "@/hooks/usePlatform.js";
 import { useOptionalServices } from "@/hooks/useServices.js";
-import type { GenImageBoard, GenImageNode, IGenImageService } from "./contract.js";
+import type {
+  GenImageBoard,
+  GenImageNode,
+  IGenImageService,
+  FeatureModelSettingsView,
+  ImageModelSettingsView,
+} from "./contract.js";
+import { GENIMAGE_ASSET_MAX_BYTES } from "./contract.js";
 
 export type LoadThumbnail = (id: string, signal: AbortSignal) => Promise<string | undefined>;
 type GenerateInput = Omit<Parameters<IGenImageService["generate"]>[0], "scope" | "requestId">;
@@ -62,6 +69,29 @@ export function useGenImageService() {
   return useOptionalServices()?.genImageService;
 }
 
+export function useGenImageModel(active: boolean) {
+  const service = useOptionalServices()?.specializedModelSettingsService;
+  const [settings, setSettings] = useState<ImageModelSettingsView>();
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (!active || !service) return;
+    let current = true;
+    void service.getImageSettings().then(
+      (settings) => {
+        if (current) setSettings(settings);
+      },
+      () => {
+        if (current) setSettings(undefined);
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [active, attempt, service]);
+  const model = settings?.models.find((model) => model.id === settings.defaultId);
+  return { model, revision: settings?.revision, refresh: () => setAttempt((value) => value + 1) };
+}
+
 export function useGenImageLocal(service: IGenImageService | undefined, scope: string) {
   const saveFile = useOptionalPlatform()?.saveFile;
   const [board, setBoard] = useState<GenImageBoard>();
@@ -69,7 +99,12 @@ export function useGenImageLocal(service: IGenImageService | undefined, scope: s
   const [loadingAttempt, setLoadingAttempt] = useState(0);
   const [moveError, setMoveError] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [generateError, setGenerateError] = useState(false);
+  const [generateError, setGenerateError] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [featurePending, setFeaturePending] = useState<string>();
+  const [featureError, setFeatureError] = useState<{ id: string; code: string }>();
+  const importPending = useRef(false);
+  const activeFeature = useRef<string | undefined>(undefined);
   const [positions, setPositions] = useState<ReadonlyMap<string, Position>>(() => new Map());
   const activeRequest = useRef<string | null>(null);
   const retryRequest = useRef<{ id: string; input: GenerateInput } | null>(null);
@@ -116,26 +151,30 @@ export function useGenImageLocal(service: IGenImageService | undefined, scope: s
     const retry = retryRequest.current;
     const sameDraft =
       retry &&
-      retry.input.sourceId === input.sourceId &&
       retry.input.prompt === input.prompt &&
-      retry.input.ratio === input.ratio;
+      retry.input.modelRevision === input.modelRevision;
     const request = sameDraft ? retry : { id: crypto.randomUUID(), input };
     activeRequest.current = request.id;
     retryRequest.current = request;
     setGenerating(true);
-    setGenerateError(false);
+    setGenerateError("");
     try {
-      const snapshot = await service.generate({ scope, requestId: request.id, ...request.input });
+      const snapshot = await service.generate({
+        scope,
+        requestId: request.id,
+        ...request.input,
+      });
       applyBoard(snapshot);
       const node = snapshot.nodes.find((candidate) => candidate.id === request.id);
       if (!node) {
-        setGenerateError(true);
+        setGenerateError("genimage.result-unknown");
         return;
       }
       retryRequest.current = null;
       return node;
-    } catch {
-      setGenerateError(true);
+    } catch (error) {
+      setGenerateError(error instanceof Error ? error.message : "genimage.result-unknown");
+      reload();
       return undefined;
     } finally {
       if (activeRequest.current === request.id) {
@@ -180,6 +219,69 @@ export function useGenImageLocal(service: IGenImageService | undefined, scope: s
     });
   }
 
+  async function importFiles(files: File[], place: () => Position) {
+    if (!service || !board || importPending.current) return;
+    importPending.current = true;
+    setImporting(true);
+    const imported: GenImageNode[] = [];
+    let failed = 0;
+    try {
+      for (const file of files) {
+        try {
+          if (!file.size || file.size > GENIMAGE_ASSET_MAX_BYTES)
+            throw new Error("Invalid file size");
+          const requestId = crypto.randomUUID();
+          const snapshot = await service.importAsset({
+            scope,
+            requestId,
+            name: file.name,
+            bytes: new Uint8Array(await file.arrayBuffer()),
+            ...place(),
+          });
+          applyBoard(snapshot);
+          const node = snapshot.nodes.find(({ id }) => id === requestId);
+          if (node) imported.push(node);
+        } catch {
+          failed++;
+        }
+      }
+      return { imported, failed };
+    } finally {
+      importPending.current = false;
+      setImporting(false);
+    }
+  }
+
+  async function extractFeatures(nodeId: string, modelRevision: number, routeKey: string) {
+    if (!service || activeFeature.current) return;
+    activeFeature.current = nodeId;
+    setFeaturePending(nodeId);
+    setFeatureError(undefined);
+    try {
+      applyBoard(
+        await service.extractFeatures({
+          scope,
+          nodeId,
+          modelRevision,
+          routeKey,
+          requestId: crypto.randomUUID(),
+        }),
+      );
+    } catch (error) {
+      setFeatureError({
+        id: nodeId,
+        code: error instanceof Error ? error.message : "genimage.feature-failed",
+      });
+    } finally {
+      activeFeature.current = undefined;
+      setFeaturePending(undefined);
+    }
+  }
+
+  function clearFeatureError() {
+    setFeatureError(undefined);
+  }
+
   const media = useMemo(() => {
     if (!service) return undefined;
     return {
@@ -188,12 +290,12 @@ export function useGenImageLocal(service: IGenImageService | undefined, scope: s
         return asset.url;
       }),
       original: (nodeId: string) => service.getAsset({ scope, nodeId, variant: "original" }),
-      exportPng: saveFile
-        ? async (nodeId: string) => {
-            const bytes = await service.readOriginal({ scope, nodeId });
+      exportOriginal: saveFile
+        ? async (node: GenImageNode) => {
+            const bytes = await service.readOriginal({ scope, nodeId: node.id });
             return saveFile({
               data: Uint8Array.from(bytes).buffer,
-              suggestedName: `genimage-${nodeId}.png`,
+              suggestedName: node.fileName ?? `image-${node.id.slice(0, 8)}.png`,
             });
           }
         : undefined,
@@ -210,8 +312,48 @@ export function useGenImageLocal(service: IGenImageService | undefined, scope: s
     moveNode,
     generating,
     generateError,
+    resetRequest: () => {
+      if (activeRequest.current) return;
+      retryRequest.current = null;
+      setGenerateError("");
+    },
     generate,
+    importing,
+    importFiles,
+    extractFeatures,
+    featurePending,
+    featureError,
+    clearFeatureError,
+    unconfirmed: board?.unconfirmed ?? 0,
   };
 }
 
 export type GenImageMedia = NonNullable<ReturnType<typeof useGenImageLocal>["media"]>;
+
+export function useGenImageFeatureModel(active: boolean) {
+  const service = useOptionalServices()?.specializedModelSettingsService;
+  const [settings, setSettings] = useState<FeatureModelSettingsView>();
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (!service || !active) return;
+    let current = true;
+    void service.getFeatureModelSettings().then(
+      (view) => {
+        if (current) setSettings(view);
+      },
+      () => {
+        if (current) setSettings(undefined);
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [active, attempt, service]);
+  return {
+    settings,
+    refresh: () => {
+      setSettings(undefined);
+      setAttempt((value) => value + 1);
+    },
+  };
+}

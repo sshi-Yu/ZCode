@@ -8,6 +8,7 @@ import {
   type ProviderModel,
   type ProviderRegistryView,
 } from "@zcode/provider";
+import { providerRouteKey } from "@zcode/provider-node";
 import { createRegistrySelectionProtocolError } from "./provider-registry-selection.js";
 
 export type RuntimeModelFactory = NonNullable<AgentRuntimeDeps["modelFactory"]>;
@@ -48,6 +49,12 @@ export class ApiProviderModelRuntime {
     const modelId = target.selection.modelId;
     const provider = this.#registry.getProvider(providerId);
     if (!provider) throw new Error("Registry Selection 校验与 Provider 索引结果不一致");
+    if (
+      target.expectedProviderRouteKey !== undefined &&
+      providerRouteKey(provider.config) !== target.expectedProviderRouteKey
+    ) {
+      throw new Error("specialized-model-settings.revision-conflict");
+    }
     const registryModel = this.#registry.getModel(providerId, modelId);
     if (!registryModel) throw new Error("Registry Selection 校验与 Model 索引结果不一致");
     return this.#createRegistryModel(provider, registryModel, target);
@@ -81,8 +88,7 @@ export class ApiProviderModelRuntime {
       // 门禁一一对应：漏掉 highspeed 会在这里丢掉 source，导致 runner 端 requestAuth 缺失、
       // 本轮在发送前抛 model_request_auth_missing。
       ...(provider.config.access.type === "zhipu-account" &&
-      (provider.config.access.mode === "off-peak" ||
-        provider.config.access.mode === "highspeed")
+      (provider.config.access.mode === "off-peak" || provider.config.access.mode === "highspeed")
         ? {
             requestDependencies: {
               requestAuth: {

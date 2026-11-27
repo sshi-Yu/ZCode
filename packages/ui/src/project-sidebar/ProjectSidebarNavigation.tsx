@@ -79,7 +79,7 @@ export const ProjectSidebarNavigation = memo(function ProjectSidebarNavigation({
           onClick={props.onOpenGenImage}
         >
           <Image className="size-4" />
-          GenImage
+          {intl.formatMessage({ id: "workspace.openImages" })}
         </Button>
       ) : null}
       {/* 扩展导航条目（nav.primary）：手机远控与「插件市场」一同隐藏；逻辑都在 extension-slots。 */}

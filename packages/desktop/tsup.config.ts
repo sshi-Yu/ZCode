@@ -241,6 +241,8 @@ const desktopNodeRuntimeExternals = [
   "node-forge",
   // ZIP 解包器内部依赖 CommonJS require("fs")，不能内联到 ESM main/host 产物。
   "yauzl",
+  // PNG 解码器内部 require util/stream/zlib；外置避免 ESM 启动时抛动态 require 错误。
+  "pngjs",
 ];
 
 function createDevReadyMarkerHook(

@@ -48,15 +48,24 @@ const storedSettings = z.strictObject({
   defaultId: uuid.nullable(),
   utilityModel: toolModel.nullable().default(null),
   utilityRevision: revision.default(0),
+  featureModel: toolModel.nullable().default(null),
+  featureRevision: revision.default(0),
   gitModel: z.unknown().optional(),
 });
 const imageMutation = z.strictObject({ expectedRevision: revision, id: uuid });
 
+export interface ExecutableFeatureModel extends ModelSelection {
+  routeKey: string;
+  endpointHost: string;
+}
+
 interface SpecializedModelSettingsOptions {
   filePath: string;
-  credentials: Pick<ICredentialService, "save" | "delete">;
+  credentials: Pick<ICredentialService, "save" | "delete" | "load">;
   readToolCandidates(): Promise<ToolModelRef[]>;
   readExecutableToolModels(): Promise<ModelSelection[]>;
+  readFeatureCandidates(): Promise<ToolModelRef[]>;
+  readExecutableFeatureModels(): Promise<ExecutableFeatureModel[]>;
 }
 
 type StoredSettings = Omit<z.infer<typeof storedSettings>, "gitModel">;
@@ -110,20 +119,20 @@ export function createSpecializedModelSettingsOwner(options: SpecializedModelSet
 
   async function read(): Promise<StoredSettings> {
     try {
-      const { revision, models, defaultId, utilityModel, utilityRevision } = storedSettings.parse(
+      const { gitModel: _legacy, ...settings } = storedSettings.parse(
         JSON.parse(await readFile(filePath, "utf8")),
       );
-      return { revision, models, defaultId, utilityModel, utilityRevision };
+      return settings;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        return { revision: 0, models: [], defaultId: null, utilityModel: null, utilityRevision: 0 };
+        return storedSettings.parse({ revision: 0, models: [], defaultId: null });
       }
       return fail("storage-unavailable");
     }
   }
 
   async function update<Result>(
-    revisionKey: "revision" | "utilityRevision",
+    revisionKey: "revision" | "utilityRevision" | "featureRevision",
     expectedRevision: number,
     change: (settings: StoredSettings, persist: () => Promise<void>) => Promise<Result>,
   ): Promise<Result> {
@@ -154,11 +163,49 @@ export function createSpecializedModelSettingsOwner(options: SpecializedModelSet
     return candidates.find((entry) => toolModelKey(entry) === key);
   }
 
+  async function featureView(settings: StoredSettings, candidates: ToolModelRef[]) {
+    const selection = settings.featureModel;
+    const executable =
+      selection && findCandidate(await options.readExecutableFeatureModels(), selection);
+    return {
+      revision: settings.featureRevision,
+      candidates,
+      selection,
+      available: Boolean(executable),
+      routeKey: executable?.routeKey ?? null,
+      endpointHost: executable?.endpointHost ?? null,
+    };
+  }
+
   return {
+    async resolveImageModel(expectedRevision: number) {
+      const settings = await read();
+      if (settings.revision !== expectedRevision) return fail("revision-conflict");
+      const saved = settings.models.find((model) => model.id === settings.defaultId);
+      if (!saved?.secretRef) return fail("model-unavailable");
+      const apiKey = await credentials.load(credentialKey(saved.secretRef));
+      if (!apiKey) return fail("key-required");
+      const { secretRef: _secretRef, ...model } = saved;
+      return {
+        ...model,
+        generationUrl: imageGenerationUrl(canonicalBaseUrl(model.baseUrl)),
+        apiKey,
+      };
+    },
     async resolveUtilityModel(): Promise<ModelSelection | null> {
       const { utilityModel } = await read();
       if (!utilityModel) return null;
       return findCandidate(await options.readExecutableToolModels(), utilityModel) ?? null;
+    },
+    async resolveFeatureModel(expectedRevision: number, expectedRouteKey: string) {
+      const { featureModel, featureRevision } = await read();
+      if (expectedRevision !== featureRevision) return fail("revision-conflict");
+      if (!featureModel) return fail("model-unavailable");
+      const executable = findCandidate(await options.readExecutableFeatureModels(), featureModel);
+      if (!executable) return fail("model-unavailable");
+      if (executable.routeKey !== expectedRouteKey) return fail("revision-conflict");
+      const { routeKey: _routeKey, endpointHost: _endpointHost, ...selection } = executable;
+      return selection;
     },
     createAttachmentService(): ISpecializedModelSettingsService {
       return {
@@ -256,6 +303,27 @@ export function createSpecializedModelSettingsOwner(options: SpecializedModelSet
             settings.utilityModel = parsed.selection;
             await persist();
             return toolSettingsView(settings, candidates);
+          });
+        },
+        async getFeatureModelSettings() {
+          const [settings, candidates] = await Promise.all([
+            read(),
+            options.readFeatureCandidates(),
+          ]);
+          return featureView(settings, candidates);
+        },
+        async setFeatureModel(input) {
+          const parsed = z
+            .strictObject({ expectedRevision: revision, selection: toolModel.nullable() })
+            .parse(input);
+          return update("featureRevision", parsed.expectedRevision, async (settings, persist) => {
+            const candidates = await options.readFeatureCandidates();
+            if (parsed.selection && !findCandidate(candidates, parsed.selection))
+              return fail("model-unavailable");
+            settings.featureModel = parsed.selection;
+            const view = await featureView(settings, candidates);
+            await persist();
+            return view;
           });
         },
       };

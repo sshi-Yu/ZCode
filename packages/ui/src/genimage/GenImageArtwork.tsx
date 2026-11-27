@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { GenImageNode } from "./contract.js";
-import { FixtureArtwork, type ImageNode } from "./fixture.js";
 import type { LoadThumbnail } from "./useGenImageLocal.js";
 
-export type CanvasNode = ImageNode | GenImageNode;
+export type CanvasNode = GenImageNode;
 
 function Thumbnail({
   id,
@@ -58,13 +57,9 @@ export function GenImageArtwork({
   className: string;
   loadThumbnail?: LoadThumbnail;
 }) {
-  return "artwork" in node ? (
-    <FixtureArtwork node={node} className={className} />
-  ) : (
-    <Thumbnail key={node.id} id={node.id} className={className} load={loadThumbnail} />
-  );
+  return <Thumbnail key={node.id} id={node.id} className={className} load={loadThumbnail} />;
 }
 
 export function nodeLabel(node: CanvasNode) {
-  return "artwork" in node ? node.id : node.id.slice(0, 8);
+  return node.id.slice(0, 8);
 }

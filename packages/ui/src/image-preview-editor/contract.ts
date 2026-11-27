@@ -12,4 +12,6 @@ export interface ImagePreviewSurfaceProps {
   onSaved: () => void;
   onNavigationGuardChange?: (guard: ((proceed: () => void) => void) | null) => void;
   onClose: () => void;
+  readOnly?: boolean;
+  onImageError?: () => void;
 }

@@ -33,6 +33,12 @@ export interface ToolModelSettingsView {
   candidates: ToolModelRef[];
 }
 
+export interface FeatureModelSettingsView extends ToolModelSettingsView {
+  available: boolean;
+  routeKey: string | null;
+  endpointHost: string | null;
+}
+
 export interface ISpecializedModelSettingsService {
   getImageSettings(): Promise<ImageModelSettingsView>;
   saveImageModel(input: {
@@ -54,6 +60,11 @@ export interface ISpecializedModelSettingsService {
     expectedRevision: number;
     selection: ToolModelRef | null;
   }): Promise<ToolModelSettingsView>;
+  getFeatureModelSettings(): Promise<FeatureModelSettingsView>;
+  setFeatureModel(input: {
+    expectedRevision: number;
+    selection: ToolModelRef | null;
+  }): Promise<FeatureModelSettingsView>;
 }
 
 export const ISpecializedModelSettingsService =

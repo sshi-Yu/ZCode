@@ -83,6 +83,44 @@ function createRuntimeWithModel(model: Model, taskType: SessionTaskType = "inter
 }
 
 describe("workspace generateText streaming aggregation", () => {
+  it("sends image features as a detached, one-attempt multimodal call", async () => {
+    const model = createStreamingModel();
+    const received: { request: ModelRequest; context: ModelInvocationContext | undefined }[] = [];
+    model.generateText = async (request) => {
+      received.push({ request, context: getCurrentModelInvocationContext() });
+      return { text: '{"summary":"A drawing","tags":["blue"]}', finishReason: "stop" };
+    };
+    const result = await createRuntimeWithModel(model).generateWorkspaceText({
+      selection: { providerId: "test-provider", modelId: "glm-test" },
+      featureImage: "iVBORw0KGgo=",
+      featureRouteKey: "1".repeat(64),
+      querySource: "genimage_features",
+    });
+    expect(result.text).toContain("A drawing");
+    expect(received).toHaveLength(1);
+    expect(received[0]!.request).toMatchObject({
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: expect.any(String) },
+            {
+              type: "image",
+              mediaType: "image/png",
+              dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+            },
+          ],
+        },
+      ],
+    });
+    expect(received[0]!.request.tools).toBeUndefined();
+    expect(received[0]!.context).toMatchObject({
+      modelRequestSessionType: "other",
+      modelRequestRedispatchPolicy: "no-redispatch",
+      metadata: { querySource: "genimage_features", skipTranscript: true },
+    });
+  });
+
   it.each([
     ["interactive", "main"],
     ["subagent_child", "subagent"],

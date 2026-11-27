@@ -63,6 +63,7 @@ import { isRemoteWorkspaceIdentity, type ManagedWorktreeCreationSettlement } fro
 import { ScopedErrorBoundary } from "@/ErrorBoundary.js";
 import { DesktopWindowControls } from "@/DesktopWindowControls.js";
 import { GenImageView } from "@/genimage/index.js";
+import { setPendingSettingsSectionIntent } from "@/lib/settingsNavigation.js";
 
 import { AUTOMATIONS_TOAST_ANCHOR_ID, AutomationsSection } from "@/settings/AutomationsSection.js";
 import type {
@@ -3038,6 +3039,10 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
                           </main>
                         ) : genImageActive ? (
                           <GenImageView
+                            onOpenModelSettings={() => {
+                              setPendingSettingsSectionIntent("modelProvider");
+                              tabStoreApi.getState().openSettingsTab();
+                            }}
                             localScope={genImageHasLocalProject ? workspaceKey : ""}
                             localScopeName={
                               genImageHasLocalProject ? getPathLeaf(workspaceAbsPath) : undefined

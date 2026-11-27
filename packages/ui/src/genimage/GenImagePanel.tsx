@@ -1,12 +1,13 @@
-import { GitFork, Plus, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import type { HTMLAttributes, Ref } from "react";
+import { Plus, X } from "lucide-react";
+import type { ReactNode, Ref } from "react";
 import { Button } from "@/components/ui/button.js";
-import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog.js";
-import { Input } from "@/components/ui/input.js";
 import { Textarea } from "@/components/ui/textarea.js";
-import { GENIMAGE_BOARD_NODE_LIMIT } from "./contract.js";
-import { MAX_NODES, ratios, type Ratio } from "./fixture.js";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog.js";
+import {
+  GENIMAGE_BOARD_NODE_LIMIT,
+  type FeatureModelSettingsView,
+  type ImageModelView,
+} from "./contract.js";
 import { GenImageArtwork, nodeLabel, type CanvasNode } from "./GenImageArtwork.js";
 import type { GenImageText } from "./text.js";
 import type { GenImageMedia } from "./useGenImageLocal.js";
@@ -17,177 +18,75 @@ interface GenImagePanelProps {
   kind: PanelKind;
   text: GenImageText;
   nodes: readonly CanvasNode[];
-  source?: CanvasNode;
   selected?: CanvasNode;
   media?: GenImageMedia;
   generating: boolean;
-  generateError: boolean;
+  generateError: string;
+  imageModel?: ImageModelView;
+  featureModel?: FeatureModelSettingsView;
   prompt: string;
-  ratio: Ratio;
   panelId: string;
   promptRef: Ref<HTMLTextAreaElement>;
   closeRef: Ref<HTMLButtonElement>;
+  onRefreshModel(): void;
+  onNewRequest(): void;
   onChangePrompt(value: string): void;
-  onChangeRatio(value: Ratio): void;
   onClose(): void;
   onSubmit(): void;
-  onDerive(id: string, trigger: HTMLButtonElement): void;
+  onPreview(id: string, trigger: HTMLElement, showFeatures?: boolean): void;
   onLocate(id: string, close: boolean): void;
+  onOpenSettings?: () => void;
 }
 
-export function FixtureBadge({ children }: Pick<HTMLAttributes<HTMLSpanElement>, "children">) {
+export function CanvasBadge({ children }: { children: ReactNode }) {
   return <span className="gi-badge">{children}</span>;
 }
 
-function OriginalImage({
-  node,
-  load,
-  text,
-}: {
-  node: CanvasNode;
-  load: GenImageMedia["original"];
-  text: GenImageText;
-}) {
-  const [url, setUrl] = useState("");
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    void load(node.id).then(
-      (asset) => {
-        if (active) setUrl(asset.url);
-      },
-      () => {
-        if (active) setFailed(true);
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [load, node.id]);
-
-  if (failed) return <p role="alert">{text.assetFailed}</p>;
-  if (!url) return <p role="status">{text.assetLoading}</p>;
-  return (
-    <img
-      className="mx-auto max-h-[75vh] max-w-full rounded-xl object-contain"
-      src={url}
-      alt={node.title}
-      data-testid="genimage-original"
-      onError={() => setFailed(true)}
-    />
-  );
+function generationError(code: string, text: GenImageText) {
+  if (code.endsWith("revision-conflict")) return text.liveChanged;
+  if (code.endsWith("authentication") || code.endsWith("key-required"))
+    return text.liveAuthentication;
+  if (code.endsWith("quota")) return text.liveQuota;
+  if (code.endsWith("response-invalid")) return text.liveInvalid;
+  if (code.endsWith("rejected")) return text.liveRejected;
+  if (code.endsWith("destination-unavailable")) return text.liveDestination;
+  return text.liveUnknown;
 }
 
-function LocalImageActions({
-  node,
-  media,
-  text,
-}: {
-  node: CanvasNode;
-  media: GenImageMedia;
-  text: GenImageText;
-}) {
-  const exporting = useRef(false);
-  const [exportStatus, setExportStatus] = useState<"busy" | "done" | "failed">();
-
-  async function exportImage() {
-    if (!media.exportPng || exporting.current) return;
-    exporting.current = true;
-    setExportStatus("busy");
-    try {
-      const result = await media.exportPng(node.id);
-      setExportStatus(result.canceled ? undefined : result.success ? "done" : "failed");
-    } catch {
-      setExportStatus("failed");
-    } finally {
-      exporting.current = false;
-    }
-  }
-
-  return (
-    <>
-      <div className="gi-form-grid">
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button type="button" variant="outline" data-testid="genimage-preview">
-              {text.preview}
-            </Button>
-          </DialogTrigger>
-          <DialogContent
-            className="sm:max-w-3xl"
-            data-testid="genimage-original-dialog"
-            aria-describedby={undefined}
-          >
-            <DialogTitle className="pr-8 wrap-anywhere">{node.title}</DialogTitle>
-            <OriginalImage node={node} load={media.original} text={text} />
-          </DialogContent>
-        </Dialog>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={!media.exportPng || exportStatus === "busy"}
-          data-testid="genimage-export"
-          onClick={() => void exportImage()}
-        >
-          {exportStatus === "busy" ? text.exporting : text.export}
-        </Button>
-      </div>
-      {exportStatus === "done" || exportStatus === "failed" ? (
-        <p role={exportStatus === "failed" ? "alert" : "status"} className="gi-caption">
-          {exportStatus === "done" ? text.exported : text.exportFailed}
-        </p>
-      ) : null}
-    </>
-  );
-}
-
-export function GenImagePanel({
-  kind,
-  text,
-  nodes,
-  source,
-  selected,
-  media,
-  generating,
-  generateError,
-  prompt,
-  ratio,
-  panelId,
-  promptRef,
-  closeRef,
-  onChangePrompt,
-  onChangeRatio,
-  onClose,
-  onSubmit,
-  onDerive,
-  onLocate,
-}: GenImagePanelProps) {
-  const title = kind === "create" ? (source ? text.deriveTitle : text.newTitle) : text[kind];
-  const dataNote = media ? text.localDataNote : text.dataNote;
-  const modelName = media ? text.localProvider : text.fixtureModel;
-  const badge = media ? text.localMode : text.fixture;
-  const atNodeLimit = nodes.length >= (media ? GENIMAGE_BOARD_NODE_LIMIT : MAX_NODES);
-  const selectedSource = selected?.source && nodes.find((node) => node.id === selected.source);
+export function GenImagePanel(props: GenImagePanelProps) {
+  const {
+    kind,
+    text,
+    nodes,
+    selected,
+    media,
+    generating,
+    generateError,
+    imageModel,
+    featureModel,
+    onOpenSettings,
+  } = props;
+  const confirm = useConfirmDialog();
+  const atNodeLimit = nodes.length >= GENIMAGE_BOARD_NODE_LIMIT;
   return (
     <section
       className="gi-float gi-panel"
       role="dialog"
-      aria-labelledby={panelId}
+      aria-labelledby={props.panelId}
       data-testid="genimage-panel"
     >
       <header className="gi-panel-header">
-        <h2 id={panelId}>
-          {title}
-          {kind === "history" ? <FixtureBadge>{nodes.length}</FixtureBadge> : null}
+        <h2 id={props.panelId}>
+          {kind === "create" ? text.create : text[kind]}
+          {kind === "history" ? <CanvasBadge>{nodes.length}</CanvasBadge> : null}
         </h2>
         <Button
-          ref={closeRef}
+          ref={props.closeRef}
           type="button"
           variant="ghost"
           size="icon-sm"
           aria-label={text.close}
-          onClick={onClose}
+          onClick={props.onClose}
         >
           <X />
         </Button>
@@ -197,81 +96,95 @@ export function GenImagePanel({
           className="gi-panel-body"
           onSubmit={(event) => {
             event.preventDefault();
-            onSubmit();
+            props.onSubmit();
           }}
         >
-          {source ? (
-            <div className="gi-source" data-testid="genimage-source" data-source={source.id}>
-              <GenImageArtwork
-                node={source}
-                className="gi-source-art"
-                loadThumbnail={media?.thumbnail}
-              />
-              <div>
-                <strong>
-                  {text.source} {nodeLabel(source)} · {source.title}
-                </strong>
-                <p>{text.sourceNote}</p>
-              </div>
-            </div>
-          ) : null}
           <label className="gi-field">
-            {source ? text.editPrompt : text.prompt}
+            {text.prompt}
             <Textarea
-              ref={promptRef}
+              ref={props.promptRef}
               className="gi-prompt"
-              value={prompt}
+              value={props.prompt}
               placeholder={text.placeholder}
-              maxLength={media ? 4000 : undefined}
+              maxLength={4000}
               readOnly={generating}
-              onChange={(event) => onChangePrompt(event.currentTarget.value)}
+              onChange={(event) => props.onChangePrompt(event.currentTarget.value)}
               data-testid="genimage-prompt"
             />
-            <span className="gi-caption">{text.formNote}</span>
           </label>
-          <div className="gi-form-grid">
-            <label className="gi-field">
-              {text.model}
-              <Input value={modelName} readOnly />
-            </label>
-            <div className="gi-field">
-              <span>{text.ratio}</span>
-              <div className="gi-ratios" role="group" aria-label={text.ratio}>
-                {ratios.map((value) => (
-                  <Button
-                    key={value}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    aria-pressed={ratio === value}
-                    disabled={generating}
-                    onClick={() => onChangeRatio(value)}
-                  >
-                    {value}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          </div>
-          <p className="gi-notice">{dataNote}</p>
-          {generateError ? (
-            <p role="alert" className="text-destructive">
-              {text.localGenerateFailed}
+          <dl className="gi-settings">
+            <dt>{text.model}</dt>
+            <dd className="wrap-anywhere">{imageModel?.name ?? text.notConnected}</dd>
+            {imageModel ? (
+              <>
+                <dt>{text.liveSize}</dt>
+                <dd>
+                  {imageModel.size || "auto"} · {imageModel.quality || "auto"}
+                </dd>
+              </>
+            ) : null}
+          </dl>
+          {imageModel ? (
+            <p className="gi-caption wrap-anywhere">
+              {new URL(imageModel.baseUrl).host} · {imageModel.modelId}
             </p>
+          ) : null}
+          {!imageModel?.configured ? (
+            <p role="status" data-testid="genimage-model-unavailable">
+              {text.liveUnavailable}
+            </p>
+          ) : null}
+          <div className="gi-form-grid">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={generating}
+              onClick={props.onRefreshModel}
+            >
+              {text.refreshModel}
+            </Button>
+            {onOpenSettings ? (
+              <Button type="button" variant="outline" size="sm" onClick={onOpenSettings}>
+                {text.openModelSettings}
+              </Button>
+            ) : null}
+          </div>
+          <p className="gi-notice">{text.liveNote}</p>
+          {generateError ? (
+            <>
+              <p role="alert" className="text-destructive">
+                {generationError(generateError, text)}
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={generating}
+                data-testid="genimage-new-request"
+                onClick={() =>
+                  void confirm({
+                    title: text.liveNewRequest,
+                    description: text.liveNewRequestConfirm,
+                  }).then((confirmed) => {
+                    if (confirmed) props.onNewRequest();
+                  })
+                }
+              >
+                {text.liveNewRequest}
+              </Button>
+            </>
           ) : null}
           <Button
             type="submit"
             size="lg"
             className="w-full"
-            disabled={generating || !prompt.trim() || atNodeLimit}
+            disabled={generating || !props.prompt.trim() || atNodeLimit || !imageModel?.configured}
             data-testid="genimage-submit"
           >
-            {source ? <GitFork /> : <Plus />}
-            {generating ? text.localGenerating : source ? text.submitDerive : text.submit}
+            <Plus />
+            {generating ? text.localGenerating : text.create}
           </Button>
-          {!media ? (
-            <p className="gi-caption">{text.limit(MAX_NODES)}</p>
-          ) : atNodeLimit ? (
+          {atNodeLimit ? (
             <p className="gi-caption">{text.localLimit(GENIMAGE_BOARD_NODE_LIMIT)}</p>
           ) : null}
         </form>
@@ -283,77 +196,35 @@ export function GenImagePanel({
             className="gi-detail-art"
             loadThumbnail={media?.thumbnail}
           />
-          <div>
-            <h3>
-              {nodeLabel(selected)} · {selected.title}
-            </h3>
-            <p className="gi-caption wrap-anywhere">{selected.prompt}</p>
-          </div>
+          <h3 className="wrap-anywhere">{selected.fileName ?? selected.title}</h3>
+          <p className="gi-caption wrap-anywhere">{selected.prompt}</p>
           <dl className="gi-settings">
-            <dt>{text.ratio}</dt>
-            <dd>{selected.ratio}</dd>
-            <dt>{text.model}</dt>
-            <dd>{modelName}</dd>
+            <dt>{text.dimensions}</dt>
+            <dd>
+              {selected.width} × {selected.height}
+            </dd>
+            <dt>{text.origin}</dt>
+            <dd>{selected.fileName ? text.imported : (selected.modelName ?? text.generated)}</dd>
           </dl>
-          <div>
-            <p className="gi-caption">{text.lineage}</p>
-            <div className="gi-relations">
-              {selectedSource ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onLocate(selectedSource.id, false)}
-                >
-                  {text.source} {nodeLabel(selectedSource)}
-                </Button>
-              ) : (
-                <span>{text.root}</span>
-              )}
-              {nodes
-                .filter((node) => node.source === selected.id)
-                .map((node) => (
-                  <Button
-                    key={node.id}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => onLocate(node.id, false)}
-                  >
-                    {nodeLabel(node)} · {node.title}
-                  </Button>
-                ))}
-            </div>
-          </div>
           <Button
             type="button"
-            size="lg"
-            className="w-full"
-            disabled={generating}
-            onClick={(event) => onDerive(selected.id, event.currentTarget)}
+            variant="outline"
+            onClick={(event) => props.onPreview(selected.id, event.currentTarget)}
           >
-            <GitFork />
-            {text.derive}
+            {text.preview}
           </Button>
-          {media ? (
-            <LocalImageActions key={selected.id} node={selected} media={media} text={text} />
-          ) : (
-            <div className="gi-form-grid">
-              <Button variant="outline" disabled>
-                {text.export}
-              </Button>
-              <Button variant="outline" disabled>
-                {text.reference}
-              </Button>
-            </div>
-          )}
-          <p className="gi-caption">{dataNote}</p>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={(event) => props.onPreview(selected.id, event.currentTarget, true)}
+          >
+            {text.features}
+          </Button>
         </div>
       ) : null}
       {kind === "history" ? (
         <div className="gi-panel-body gi-history">
-          <p className="gi-caption">{media ? text.localHistory : text.historyNote}</p>
-          {media && !nodes.length ? <p className="gi-caption">{text.localEmpty}</p> : null}
+          <p className="gi-caption">{nodes.length ? text.localHistory : text.localEmpty}</p>
           <ol>
             {nodes.toReversed().map((node) => (
               <li key={node.id}>
@@ -362,23 +233,22 @@ export function GenImagePanel({
                   variant="ghost"
                   className="gi-history-row"
                   data-genimage-history={node.id}
-                  onClick={() => onLocate(node.id, true)}
+                  onClick={() => props.onLocate(node.id, true)}
                 >
                   <GenImageArtwork
                     node={node}
                     className="gi-history-art"
                     loadThumbnail={media?.thumbnail}
                   />
-                  <span>
-                    <strong>
-                      {nodeLabel(node)} · {node.title}
+                  <span className="min-w-0">
+                    <strong className="truncate">
+                      {nodeLabel(node)} · {node.fileName ?? node.title}
                     </strong>
                     <span className="gi-caption">
-                      {node.source ? `${text.derived} ${node.source.slice(0, 8)}` : text.root} ·{" "}
-                      {node.ratio}
+                      {node.width} × {node.height}
                     </span>
                   </span>
-                  <FixtureBadge>{badge}</FixtureBadge>
+                  <CanvasBadge>{node.fileName ? text.imported : text.generated}</CanvasBadge>
                 </Button>
               </li>
             ))}
@@ -388,15 +258,23 @@ export function GenImagePanel({
       {kind === "settings" ? (
         <div className="gi-panel-body">
           <dl className="gi-settings">
-            <dt>{text.mode}</dt>
-            <dd>{badge}</dd>
-            <dt>{text.provider}</dt>
-            <dd>{media ? text.localProvider : text.notConnected}</dd>
+            <dt>{text.model}</dt>
+            <dd>{imageModel?.name ?? text.notConnected}</dd>
+            <dt>{text.featureModel}</dt>
+            <dd className="wrap-anywhere">
+              {featureModel?.selection
+                ? `${featureModel.selection.providerId} / ${featureModel.selection.modelId}`
+                : text.notConnected}
+            </dd>
             <dt>{text.appearance}</dt>
             <dd>{text.followsApp}</dd>
           </dl>
-          <p className="gi-notice">{dataNote}</p>
-          {!media ? <p className="gi-caption">{text.reset}</p> : null}
+          {onOpenSettings ? (
+            <Button type="button" variant="outline" onClick={onOpenSettings}>
+              {text.openModelSettings}
+            </Button>
+          ) : null}
+          <p className="gi-notice">{text.localSaved}</p>
         </div>
       ) : null}
       {kind === "help" ? (
@@ -407,8 +285,7 @@ export function GenImagePanel({
             [`${text.zoomIn} / ${text.zoomOut}`, "+ / −"],
             [text.fit, "0"],
             [text.create, "N"],
-            [text.select, "Tab / Enter"],
-            [text.navigate, "← / →"],
+            [text.preview, "Tab / Enter"],
             [text.nudge, "Shift + ↑↓←→"],
             [text.close, "Esc"],
           ].map(([label, shortcut]) => (

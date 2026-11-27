@@ -250,7 +250,7 @@ export function useModelProviderNavigation({
           {
             key: "specialized:image",
             type: "imageSettings",
-            label: zh ? "生图模型" : "Image models",
+            label: zh ? "图像生成模型" : "Image generation models",
           },
         ],
       });

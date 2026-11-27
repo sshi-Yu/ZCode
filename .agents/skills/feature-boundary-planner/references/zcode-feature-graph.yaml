@@ -741,12 +741,12 @@ nodes:
 
   - id: "capability.genimage-canvas"
     kind: "capability"
-    label: "GenImage native canvas and local simulation"
-    aliases: ["GenImage", "无限画布", "模拟生图", "图像派生"]
+    label: "Images workspace canvas, cached assets, preview and feature extraction"
+    aliases: ["GenImage", "图像画布", "无限画布", "素材导入", "大屏预览", "图像特征"]
     docs:
       - "docs/superpowers/specs/2026-11-26-genimage-native-view-design.md"
       - "docs/superpowers/specs/2026-11-27-genimage-canvas-product-design.md"
-      - "docs/superpowers/plans/2026-11-27-genimage-local-canvas.md"
+      - "docs/ui/shared-image-preview-dialog.md"
     codeSeeds:
       - symbol: "GenImageView"
         file: "packages/ui/src/genimage/GenImageView.tsx"
@@ -755,14 +755,16 @@ nodes:
       - symbol: "IGenImageService"
         file: "packages/services/src/genimage/contract.ts"
     invariants:
-      - "The native desktop preview uses a temporary SVG fixture. The explicit local simulation uses persisted PNG assets and board state, without an external generation request."
+      - "The Images entry opens the existing live board directly. Imported originals and thumbnails are cached locally; legacy simulation data is not opened, migrated, or deleted."
       - "Only local desktop attachments expose the service. Workspace identities select separate boards and a blank scope selects the local personal board."
       - "Host commits node coordinates and source references. Renderer owns the camera and draft. A layout edit cannot change image lineage."
+      - "Explicit creation uses the reviewed default image model revision and Host-private credentials. Persisted generation admissions never resend the same request ID after interruption."
+      - "Import, preview and restore never send image bytes to a provider. Explicit extraction uses only the reviewed feature model and caches bounded text results per board."
 
   - id: "capability.specialized-model-settings"
     kind: "capability"
-    label: "Desktop image and utility model settings"
-    aliases: ["图像模型", "生图模型", "小工具模型"]
+    label: "Desktop image generation, image feature and utility model settings"
+    aliases: ["图像模型", "图像生成模型", "生图模型", "特征提取模型", "小工具模型"]
     docs:
       - "docs/superpowers/specs/2026-11-26-model-settings-images-and-tools.md"
     codeSeeds:
@@ -779,6 +781,7 @@ nodes:
     invariants:
       - "The desktop local attachment is the only RPC entry. The image settings projection exposes key presence and independent defaults; saving sends no image request."
       - "A model row can set or clear the single device-local utility model marker. Consumers choose when to use it and provide their own session-model fallback."
+      - "The independently revised feature model marker accepts image-and-text input with text output and never falls back to the utility or chat model. Saving a marker does not invoke a provider."
 
   - id: "capability.provider-templates"
     kind: "capability"

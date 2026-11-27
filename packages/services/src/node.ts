@@ -62,6 +62,7 @@ import {
   createNodeProviderRuntimePathEnv,
   NodeModelSelectionConfigRepository,
   PERSONAL_PROVIDER_CONFIG_FILE_NAME,
+  providerRouteKey,
 } from "@zcode/provider-node";
 import { getAppConfigDir as resolveAppConfigDir, getCredentialsFilePath } from "./paths.js";
 import {
@@ -477,7 +478,10 @@ import {
   createSpecializedModelSettingsOwner,
   IMAGE_MODEL_CREDENTIAL_PREFIX,
 } from "./specialized-model-settings/node.js";
-import type { ISpecializedModelSettingsService } from "./specialized-model-settings/contract.js";
+import type {
+  ImageModelInput,
+  ISpecializedModelSettingsService,
+} from "./specialized-model-settings/contract.js";
 import { createGitCheckpointService } from "./git/gitCheckpointService.js";
 import { getWorkspaceCheckpointDirectory } from "./git/repo/gitCheckpointStore.js";
 import { createSystemService } from "./system/systemService.js";
@@ -1377,6 +1381,18 @@ export function createLocalServices(options: {
   onAppControlServiceCreated?: (handle: AppControlServiceHandle) => void;
   onSpecializedModelSettingsCreated?: (
     createAttachmentService: () => ISpecializedModelSettingsService,
+    resolveImageModel: (
+      expectedRevision: number,
+    ) => Promise<ImageModelInput & { id: string; generationUrl: string; apiKey: string }>,
+    resolveFeatureModel: (
+      expectedRevision: number,
+      expectedRouteKey: string,
+    ) => Promise<import("@zcode/shared").ModelSelection>,
+    extractImageFeatures: (input: {
+      selection: import("@zcode/shared").ModelSelection;
+      image: Uint8Array;
+      routeKey: string;
+    }) => Promise<{ summary: string; tags: string[] }>,
   ) => void;
   /** browser-use 执行桥（host→main WebContentsView+CDP）；desktop host 注入，缺省则 browser 不可用。 */
   browserControlExecutor?: {
@@ -2467,16 +2483,14 @@ export function createLocalServices(options: {
       ? { accountProviderConfigSource: agentAccountProviderConfigSource }
       : {}),
     accountRequestAuthService,
-    readRequestVerificationConfig: () =>
-      runtimeConfigService.getRequestVerificationConfig(),
+    readRequestVerificationConfig: () => runtimeConfigService.getRequestVerificationConfig(),
     ...(modelSelectionReadinessSource ? { modelSelectionReadinessSource } : {}),
     authorizeLocalMediaPreviewPath: options?.authorizeLocalMediaPreviewPath,
     ...offPeakToolWiring,
     // 动态工作流灰度：与 Off-Peak 不同，
     // 这里不按 serviceAuthorityMode 裁剪——SSH/WSL/Docker 的 desktop-attached-remote Host
     // 是它自己那些 workspace 的唯一裁决者，灰度开启时远程 workspace 同样提供工作流。
-    resolveDynamicWorkflowClientConfig: () =>
-      runtimeConfigService.getDynamicWorkflowClientConfig(),
+    resolveDynamicWorkflowClientConfig: () => runtimeConfigService.getDynamicWorkflowClientConfig(),
     ...(resolveDynamicWorkflowUserMode ? { resolveDynamicWorkflowUserMode } : {}),
     forwardDynamicWorkflowUserMode: options?.forwardDynamicWorkflowUserMode,
     commandResolver: options?.zcodeAgentCommandResolver,
@@ -2788,10 +2802,72 @@ export function createLocalServices(options: {
               }),
             );
           },
+          async readFeatureCandidates() {
+            const view = await providerRuntime.providerSettings.getView();
+            return view.providers.flatMap(({ providerId, models }) =>
+              models.flatMap(({ modelId, effectiveConfig }) =>
+                effectiveConfig.properties?.inputFormat?.supportsImage &&
+                effectiveConfig.properties.inputFormat.supportsText &&
+                effectiveConfig.properties.outputFormat?.supportsText
+                  ? [{ providerId, modelId }]
+                  : [],
+              ),
+            );
+          },
+          async readExecutableFeatureModels() {
+            const view = await providerRuntime.modelSelection.getView();
+            return view.providers.flatMap(({ providerId, config: providerConfig, models }) => {
+              const baseUrl = providerConfig.api?.baseUrl;
+              if (!baseUrl) return [];
+              const endpointHost = URL.parse(baseUrl)?.host;
+              if (!endpointHost) return [];
+              const routeKey = providerRouteKey(providerConfig);
+              return models.flatMap(({ modelId, config }) => {
+                const { inputFormat, outputFormat } = config.properties;
+                if (
+                  !inputFormat.supportsImage ||
+                  !inputFormat.supportsText ||
+                  !outputFormat.supportsText
+                )
+                  return [];
+                const reasoningLevel = config.optionSpecs.reasoningLevel.values[0];
+                return [
+                  {
+                    providerId,
+                    modelId,
+                    endpointHost,
+                    routeKey,
+                    ...(reasoningLevel ? { options: { reasoningLevel } } : {}),
+                  },
+                ];
+              });
+            });
+          },
         })
       : undefined;
   if (specializedModelSettings)
-    options.onSpecializedModelSettingsCreated?.(specializedModelSettings.createAttachmentService);
+    options.onSpecializedModelSettingsCreated?.(
+      specializedModelSettings.createAttachmentService,
+      specializedModelSettings.resolveImageModel,
+      specializedModelSettings.resolveFeatureModel,
+      async ({ selection, image, routeKey }) => {
+        const signal = AbortSignal.timeout(75_000);
+        const result = await zcodeAgentService.generateWorkspaceText({
+          workspacePath: homedir(),
+          selection,
+          featureImage: Buffer.from(image).toString("base64"),
+          featureRouteKey: routeKey,
+          querySource: "genimage_features",
+          signal,
+        });
+        const text = result.text.trim();
+        if (text.length > 8192) throw new Error("genimage.feature-failed");
+        return JSON.parse(text.replace(/^```(?:json)?\s*\n([\s\S]*?)\n```$/i, "$1")) as {
+          summary: string;
+          tags: string[];
+        };
+      },
+    );
 
   const gitService = createGitService({
     commitMessageGenerator: new GitCommitMessageGenerator({
@@ -3134,10 +3210,7 @@ export function createLocalServices(options: {
     )
     .register(ICodingPlanSubscriptionService, codingPlanSubscriptionService)
     .register(IRuntimeConfigService, runtimeConfigService)
-    .register(
-      IAccountModelProjectsService,
-      accountModelProjectsService,
-    )
+    .register(IAccountModelProjectsService, accountModelProjectsService)
     .register(
       IClientConfigService,
       createClientConfigService({

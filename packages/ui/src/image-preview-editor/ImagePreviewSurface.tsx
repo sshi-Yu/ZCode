@@ -49,6 +49,8 @@ export function ImagePreviewSurface({
   onSaved,
   onClose,
   onNavigationGuardChange,
+  readOnly = false,
+  onImageError,
 }: ImagePreviewSurfaceProps) {
   const { intl } = useZCodeIntl();
   const keepEditingRef = useRef<HTMLButtonElement>(null);
@@ -84,11 +86,14 @@ export function ImagePreviewSurface({
   const savePending = useRef(false),
     alive = useRef(true);
   const fit = Math.min(
-    1,
+    readOnly ? Infinity : 1,
     viewport.width / (natural.width || 1),
     viewport.height / (natural.height || 1),
   );
-  const size = { width: natural.width * fit, height: natural.height * fit };
+  const fittedWidth = natural.width * fit;
+  const fittedHeight = natural.height * fit;
+  const { width: viewportWidth, height: viewportHeight } = viewport;
+  const size = { width: fittedWidth, height: fittedHeight };
   const canPan =
     size.width * transform.scale > viewport.width + 1 ||
     size.height * transform.scale > viewport.height + 1;
@@ -155,9 +160,14 @@ export function ImagePreviewSurface({
   useEffect(() => {
     setTransform((current) => ({
       ...current,
-      offset: clampOffset(current.offset, current.scale, size, viewport),
+      offset: clampOffset(
+        current.offset,
+        current.scale,
+        { width: fittedWidth, height: fittedHeight },
+        { width: viewportWidth, height: viewportHeight },
+      ),
     }));
-  }, [size.width, size.height, viewport.width, viewport.height]);
+  }, [fittedWidth, fittedHeight, viewportWidth, viewportHeight]);
   const wheel = useEffectEvent((event: WheelEvent) => {
     if (saving || actionBusy || pendingExit || gestureRef.current || !natural.width) return;
     event.preventDefault();
@@ -416,6 +426,126 @@ export function ImagePreviewSurface({
       if (alive.current) setSaving(false);
     }
   };
+  const zoomControls = (
+    <>
+      <Button
+        aria-label={intl.formatMessage({ id: "markdownImage.zoomOut" })}
+        disabled={actionBusy || saving || transform.scale <= 0.5}
+        onClick={() => zoom(transform.scale - 0.5)}
+        size="icon-sm"
+        variant="ghost"
+        className="rounded-full"
+      >
+        <MinusIcon />
+      </Button>
+      <button
+        type="button"
+        title={intl.formatMessage({ id: "preview.image.resetZoom" })}
+        onClick={() => setTransform({ scale: 1, offset: ZERO })}
+        className="min-w-10 text-center text-ui-sm"
+        aria-label={intl.formatMessage({ id: "preview.image.resetZoom" })}
+      >
+        {Math.round(transform.scale * 100)}%
+      </button>
+      <Button
+        aria-label={intl.formatMessage({ id: "markdownImage.zoomIn" })}
+        disabled={actionBusy || saving || transform.scale >= 3}
+        onClick={() => zoom(transform.scale + 0.5)}
+        size="icon-sm"
+        variant="ghost"
+        className="rounded-full"
+      >
+        <PlusIcon />
+      </Button>
+    </>
+  );
+  const imageViewport = (
+    <div
+      tabIndex={0}
+      aria-label={alt}
+      onKeyDown={(event) => {
+        if (readOnly) return;
+        if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+        event.preventDefault();
+        const rect = event.currentTarget.getBoundingClientRect();
+        event.currentTarget.dispatchEvent(
+          new MouseEvent("contextmenu", {
+            bubbles: true,
+            cancelable: true,
+            clientX: rect.left + rect.width / 2,
+            clientY: rect.top + rect.height / 2,
+          }),
+        );
+      }}
+      className={
+        readOnly
+          ? "absolute inset-x-3 bottom-14 top-3 overflow-hidden sm:inset-x-6 sm:top-5"
+          : "absolute inset-x-14 bottom-24 top-20 overflow-hidden sm:inset-x-16"
+      }
+      data-image-preview-viewport=""
+      ref={viewportRef}
+      onClick={(event) => {
+        if (!readOnly && event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div
+        data-image-preview-surface=""
+        ref={surfaceRef}
+        className="absolute left-1/2 top-1/2 touch-none select-none"
+        onClick={(event) => event.stopPropagation()}
+        onPointerDown={pointerDown}
+        onPointerMove={pointerMove}
+        onPointerUp={pointerEnd}
+        onPointerCancel={pointerEnd}
+        onLostPointerCapture={pointerEnd}
+        style={{
+          width: size.width,
+          height: size.height,
+          cursor,
+          transform: `translate(-50%, -50%) translate(${transform.offset.x}px, ${transform.offset.y}px) scale(${transform.scale})`,
+        }}
+      >
+        <img
+          alt={alt}
+          src={src}
+          ref={imageRef}
+          data-testid={imageTestId}
+          draggable={false}
+          className={
+            readOnly
+              ? "size-full rounded-sm object-contain shadow-lg"
+              : "size-full rounded-xl object-contain"
+          }
+          onError={onImageError}
+          onLoad={(event) =>
+            setNatural({
+              width: event.currentTarget.naturalWidth,
+              height: event.currentTarget.naturalHeight,
+            })
+          }
+        />
+        {!readOnly ? (
+          <svg
+            ref={overlayRef}
+            className={`pointer-events-none absolute inset-0 size-full overflow-hidden text-foreground ${editing ? "" : "[&_*]:pointer-events-none!"}`}
+            viewBox={`0 0 ${natural.width || 1} ${natural.height || 1}`}
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <AnnotationLayer annotations={displayed} selected={selected} />
+          </svg>
+        ) : null}
+      </div>
+    </div>
+  );
+  if (readOnly)
+    return (
+      <>
+        {imageViewport}
+        <div className="absolute bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-border bg-popover px-1.5 py-1 shadow-sm">
+          {zoomControls}
+        </div>
+      </>
+    );
   return (
     <>
       <ImagePreviewActions
@@ -432,103 +562,9 @@ export function ImagePreviewSurface({
         onAddEdited={dirty ? () => void save() : undefined}
         onDownload={onDownload}
         downloading={downloading}
-        zoomControls={
-          <>
-            <Button
-              aria-label={intl.formatMessage({ id: "markdownImage.zoomOut" })}
-              disabled={actionBusy || saving || transform.scale <= 0.5}
-              onClick={() => zoom(transform.scale - 0.5)}
-              size="icon-sm"
-              variant="ghost"
-              className="rounded-full"
-            >
-              <MinusIcon />
-            </Button>
-            <button
-              type="button"
-              title={intl.formatMessage({ id: "preview.image.resetZoom" })}
-              onClick={() => setTransform({ scale: 1, offset: ZERO })}
-              className="min-w-10 text-center text-ui-sm"
-            >
-              {Math.round(transform.scale * 100)}%
-            </button>
-            <Button
-              aria-label={intl.formatMessage({ id: "markdownImage.zoomIn" })}
-              disabled={actionBusy || saving || transform.scale >= 3}
-              onClick={() => zoom(transform.scale + 0.5)}
-              size="icon-sm"
-              variant="ghost"
-              className="rounded-full"
-            >
-              <PlusIcon />
-            </Button>
-          </>
-        }
+        zoomControls={zoomControls}
       >
-        <div
-          tabIndex={0}
-          aria-label={alt}
-          onKeyDown={(event) => {
-            if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
-            event.preventDefault();
-            const rect = event.currentTarget.getBoundingClientRect();
-            event.currentTarget.dispatchEvent(
-              new MouseEvent("contextmenu", {
-                bubbles: true,
-                cancelable: true,
-                clientX: rect.left + rect.width / 2,
-                clientY: rect.top + rect.height / 2,
-              }),
-            );
-          }}
-          className="absolute inset-x-14 bottom-24 top-20 overflow-hidden sm:inset-x-16"
-          data-image-preview-viewport=""
-          ref={viewportRef}
-          onClick={(event) => {
-            if (event.target === event.currentTarget) onClose();
-          }}
-        >
-          <div
-            data-image-preview-surface=""
-            ref={surfaceRef}
-            className="absolute left-1/2 top-1/2 touch-none select-none"
-            onClick={(event) => event.stopPropagation()}
-            onPointerDown={pointerDown}
-            onPointerMove={pointerMove}
-            onPointerUp={pointerEnd}
-            onPointerCancel={pointerEnd}
-            onLostPointerCapture={pointerEnd}
-            style={{
-              width: size.width,
-              height: size.height,
-              cursor,
-              transform: `translate(-50%, -50%) translate(${transform.offset.x}px, ${transform.offset.y}px) scale(${transform.scale})`,
-            }}
-          >
-            <img
-              alt={alt}
-              src={src}
-              ref={imageRef}
-              data-testid={imageTestId}
-              draggable={false}
-              className="size-full rounded-xl object-contain"
-              onLoad={(event) =>
-                setNatural({
-                  width: event.currentTarget.naturalWidth,
-                  height: event.currentTarget.naturalHeight,
-                })
-              }
-            />
-            <svg
-              ref={overlayRef}
-              className={`pointer-events-none absolute inset-0 size-full overflow-hidden text-foreground ${editing ? "" : "[&_*]:pointer-events-none!"}`}
-              viewBox={`0 0 ${natural.width || 1} ${natural.height || 1}`}
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <AnnotationLayer annotations={displayed} selected={selected} />
-            </svg>
-          </div>
-        </div>
+        {imageViewport}
       </ImagePreviewActions>
       {textDraft ? (
         <div

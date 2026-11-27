@@ -224,6 +224,7 @@ export async function seedReplayProvider(params: {
         : {
             contextWindow: input.contextWindow,
             id: input.id,
+            inputModalities: input.inputModalities,
             maxOutputTokens: input.maxOutputTokens ?? input.limit?.output,
             // 保留场景声明的档位，避免退回 disabled 后拒绝已保存的 high/max 偏好。
             reasoningLevel: input.reasoningLevel,

@@ -6166,6 +6166,8 @@ export function createZCodeAgentService(
             ...(params.prompt ? { prompt: params.prompt } : {}),
             ...(params.messages ? { messages: params.messages } : {}),
             ...(params.tools ? { tools: params.tools } : {}),
+            ...(params.featureImage ? { featureImage: params.featureImage } : {}),
+            ...(params.featureRouteKey ? { featureRouteKey: params.featureRouteKey } : {}),
             querySource: params.querySource,
             ...(params.maxOutputTokens ? { maxOutputTokens: params.maxOutputTokens } : {}),
             ...(operationId ? { operationId } : {}),

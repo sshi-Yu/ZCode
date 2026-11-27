@@ -2939,9 +2939,7 @@ interface LegacyGoalContinuation {
   canContinue: boolean;
 }
 
-function resolveLegacyGoalContinuation(
-  record: ZCodeProtocolSessionRecord,
-): LegacyGoalContinuation {
+function resolveLegacyGoalContinuation(record: ZCodeProtocolSessionRecord): LegacyGoalContinuation {
   const isPlanMode = record.app.runtime.getPlanEnabled?.() ?? record.app.getMode?.() === "plan";
   return { isPlanMode, canContinue: !isPlanMode && !record.activeAbortController };
 }
@@ -3195,13 +3193,18 @@ export async function generateWorkspaceText(
   abortSignal?: AbortSignal,
 ) {
   const params = parseParams(zcodeWorkspaceGenerateTextParamsSchema, rawParams);
-  const active = Array.from(context.sessions.values()).find(
-    (record) => record.workspace.workspaceKey === params.workspace.workspaceKey,
-  );
+  if (params.featureImage) await context.deps.refreshProviderRegistry?.("image-feature-extraction");
+  const active = params.featureImage
+    ? undefined
+    : Array.from(context.sessions.values()).find(
+        (record) => record.workspace.workspaceKey === params.workspace.workspaceKey,
+      );
   const input = {
     selection: params.selection,
     ...(params.prompt ? { prompt: params.prompt } : {}),
     ...(params.messages ? { messages: params.messages } : {}),
+    ...(params.featureImage ? { featureImage: params.featureImage } : {}),
+    ...(params.featureRouteKey ? { featureRouteKey: params.featureRouteKey } : {}),
     ...(params.tools
       ? {
           tools: params.tools.map((tool) => ({
@@ -3235,6 +3238,13 @@ export async function generateWorkspaceText(
       ...(result.usage ? { usage: result.usage } : {}),
       ...(result.toolCalls ? { toolCalls: result.toolCalls } : {}),
     };
+  } catch (error) {
+    if (
+      params.featureImage &&
+      !(error instanceof Error && error.message === "specialized-model-settings.revision-conflict")
+    )
+      throw new Error("Image feature extraction failed");
+    throw error;
   } finally {
     if (!active) {
       await app.close?.();

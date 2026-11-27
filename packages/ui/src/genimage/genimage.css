@@ -39,18 +39,19 @@
   overflow: visible;
   pointer-events: none;
 }
-.genimage-view .gi-edges > path {
+.genimage-view .gi-edges > g {
   fill: none;
   stroke: var(--color-foreground-subtlest);
-  stroke-width: 2;
-  vector-effect: non-scaling-stroke;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .genimage-view .gi-edges > [data-related="true"] {
   stroke: var(--color-foreground-subtle);
-  stroke-width: 2.5;
+  stroke-width: 2;
 }
-.genimage-view .gi-edges marker {
-  fill: var(--color-foreground-subtle);
+.genimage-view .gi-edges path {
+  vector-effect: non-scaling-stroke;
 }
 
 .genimage-view .gi-node {
@@ -104,13 +105,25 @@
 .genimage-view .gi-node h3 {
   font-weight: 500;
 }
-.genimage-view[data-genimage-mode="local"] .gi-node > footer > div {
+.gi-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
   min-width: 0;
 }
-.genimage-view[data-genimage-mode="local"] .gi-node h3 {
+.gi-tags li {
+  color: var(--color-foreground-subtle);
+  background: var(--color-secondary);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-ui-xs);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.gi-node .gi-tags {
+  margin-top: 4px;
+  flex-wrap: nowrap;
 }
 .genimage-view .gi-node-actions {
   position: absolute;
@@ -181,9 +194,99 @@
   left: 24px;
   pointer-events: none;
 }
-.genimage-view[data-genimage-mode="local"] .gi-note {
+.genimage-view .gi-note {
   max-width: calc(100% - 48px);
   overflow-wrap: anywhere;
+}
+
+[role="dialog"].gi-original-dialog {
+  display: grid;
+  position: fixed;
+  inset: 0;
+  transform: none;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0;
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: var(--color-background);
+  animation: none;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+.gi-original-header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 12px clamp(14px, 2.5vw, 32px);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-background);
+}
+.platform-windows-desktop .gi-original-header {
+  padding-top: max(36px, env(titlebar-area-height, 36px));
+}
+.platform-mac-desktop .gi-original-header {
+  padding-left: max(80px, 2.5vw);
+}
+.platform-linux-desktop .gi-original-header {
+  padding-top: 40px;
+}
+.gi-original-body {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 0;
+}
+.gi-original-stage {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  background: var(--color-background-alt);
+}
+.gi-original-message {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: var(--color-foreground-subtle);
+  font-size: var(--text-ui-base);
+}
+.gi-original-export {
+  position: absolute;
+  right: clamp(12px, 2.5vw, 32px);
+  bottom: 9px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.gi-original-features {
+  width: clamp(240px, 30vw, 320px);
+  padding: 16px 20px;
+  overflow: auto;
+  border-inline-start: 1px solid var(--color-border);
+  background: var(--color-popover);
+}
+@media (max-width: 650px) {
+  .gi-original-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .gi-original-features {
+    position: absolute;
+    inset: auto 0 53px;
+    z-index: 1;
+    width: auto;
+    max-height: 62%;
+    border-inline-start: 0;
+    border-top: 1px solid var(--color-border);
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  }
 }
 .genimage-view .gi-note p:first-child {
   color: var(--color-foreground-subtle);
@@ -283,28 +386,10 @@
   gap: 14px;
   padding: 16px;
 }
-.genimage-view .gi-caption,
-.genimage-view .gi-source p {
+.genimage-view .gi-caption {
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-sm);
 }
-.genimage-view .gi-source {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px;
-  border-radius: var(--radius-lg);
-  background: var(--color-secondary);
-}
-.genimage-view .gi-source strong {
-  font-size: var(--text-ui-sm);
-  font-weight: 550;
-}
-.genimage-view[data-genimage-mode="local"] .gi-source,
-.genimage-view[data-genimage-mode="local"] .gi-panel h3 {
-  overflow-wrap: anywhere;
-}
-.genimage-view .gi-source-art,
 .genimage-view .gi-history-art {
   width: 64px;
   height: 48px;
