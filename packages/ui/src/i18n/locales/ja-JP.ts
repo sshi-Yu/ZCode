@@ -5238,6 +5238,10 @@ const jaJP: Record<string, string> = {
     "カスタムプロバイダーの構成を削除します。現在の設定ページでの関連する編集は自動的には復元されません。",
   "settings.modelProvider.deleteConfirmAction": "プロバイダーを削除",
   "settings.modelProvider.testModel": "モデルをテスト",
+  "settings.modelProvider.utilityModel.label": "ユーティリティモデル",
+  "settings.modelProvider.utilityModel.set": "ユーティリティモデルに設定",
+  "settings.modelProvider.utilityModel.clear": "ユーティリティモデルの設定を解除",
+  "settings.modelProvider.utilityModel.saveFailed": "設定を保存できませんでした。もう一度お試しください。",
   "settings.modelProvider.testModel.enableProviderFirst": "先にプロバイダーを有効にしてください",
   "settings.modelProvider.testModel.providerUnavailable":
     "このプロバイダーは現在、接続テストに使用できません。",

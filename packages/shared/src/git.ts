@@ -1,4 +1,5 @@
 import type { Locale } from "./protocol.js";
+import type { ModelSelection } from "./model-selection.js";
 
 export type GitHeadRefType = "branch" | "detached";
 
@@ -361,6 +362,7 @@ export interface GitCommitResult {
 
 export interface GitGenerateCommitMessageRequest extends GitRepositoryRequest {
   workspaceIdentity?: string;
+  sessionModel?: ModelSelection;
   locale?: Locale;
   includeUnstaged?: boolean;
   currentSessionFilePaths?: string[];

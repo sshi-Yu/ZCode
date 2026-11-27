@@ -42,6 +42,7 @@ import {
 } from "./model-provider-section/constants.js";
 import { ModelProviderSectionDetail } from "./model-provider-section/Detail.js";
 import { ModelProviderSectionLayout } from "./model-provider-section/SectionLayout.js";
+import { ImageModelSettings } from "./specialized-model-settings/index.js";
 import { ProviderTemplatePicker } from "./model-provider-section/ProviderTemplatePicker.js";
 import type { CodingPlanLoginOptions } from "./model-provider-section/codingPlanPricingCards.js";
 import { useModelProviderNavigation } from "./model-provider-section/useModelProviderNavigation.js";
@@ -252,7 +253,7 @@ export function ModelProviderSection({
   const { intl, locale } = useZCodeIntl();
   const confirmDialog = useConfirmDialog();
   const platform = usePlatform();
-  const { oauthService } = useServices();
+  const { oauthService, specializedModelSettingsService } = useServices();
   const {
     modelProviders,
     providerTemplates,
@@ -655,6 +656,8 @@ export function ModelProviderSection({
       modelProviders,
       entitledAccountProviderIds,
       modelProvidersLoading: loading,
+      specializedSettingsVisible: Boolean(specializedModelSettingsService),
+      locale,
       displayOrder,
       codingPlanEntitlements,
       subscribedTeamProducts,
@@ -1053,20 +1056,19 @@ export function ModelProviderSection({
       ? authenticatedZaiEnterpriseProducts
       : authenticatedEnterpriseProducts;
 
-  if (loadError) {
-    return (
-      <div className="flex min-h-64 flex-col items-center justify-center gap-3 text-ui-base">
-        <p className="text-destructive">{loadError.message}</p>
-        <Button type="button" variant="outline" onClick={reload}>
-          {intl.formatMessage({ id: "common.retry" })}
-        </Button>
-      </div>
-    );
-  }
+  const imageSelection = selectedNavItem?.type === "imageSettings";
 
   return (
     <ModelProviderSectionLayout
-      description={intl.formatMessage({ id: "settings.modelProviderDescription" })}
+      description={
+        imageSelection
+          ? locale.startsWith("zh")
+            ? "配置用于生成图像的模型。"
+            : "Configure models for image generation."
+          : intl.formatMessage({ id: "settings.modelProviderDescription" })
+      }
+      showProviderActions={!imageSelection && !loadError}
+      utilityModelsRevision={providerSettingsView?.revision}
       refreshLabel={intl.formatMessage({ id: "settings.modelProvider.refresh" })}
       loadingLabel={intl.formatMessage({ id: "common.loading" })}
       presetLoading={presetLoading}
@@ -1100,7 +1102,9 @@ export function ModelProviderSection({
       onReorderProviderIds={handleReorderProviderIds}
       reorderableProviderIds={reorderableProviderIds}
     >
-      {(invalidProviderTarget || navigationUnavailable) && !templatePickerOpen ? (
+      {!imageSelection &&
+      (invalidProviderTarget || navigationUnavailable) &&
+      !templatePickerOpen ? (
         <p role="alert" className="mb-3 text-ui-base text-destructive">
           {intl.formatMessage({
             id: invalidProviderTarget
@@ -1109,7 +1113,7 @@ export function ModelProviderSection({
           })}
         </p>
       ) : null}
-      {teamProjects.error && !templatePickerOpen ? (
+      {!imageSelection && teamProjects.error && !templatePickerOpen ? (
         <div
           className="mb-3 flex flex-wrap items-center gap-2"
           data-testid="team-projects-load-error"
@@ -1122,7 +1126,16 @@ export function ModelProviderSection({
           </Button>
         </div>
       ) : null}
-      {templatePickerOpen ? (
+      {imageSelection ? (
+        <ImageModelSettings />
+      ) : loadError ? (
+        <div className="flex min-h-64 flex-col items-center justify-center gap-3 text-ui-base">
+          <p className="text-destructive">{loadError.message}</p>
+          <Button type="button" variant="outline" onClick={reload}>
+            {intl.formatMessage({ id: "common.retry" })}
+          </Button>
+        </div>
+      ) : templatePickerOpen ? (
         <ProviderTemplatePicker
           templates={providerTemplates}
           creating={creatingProvider}

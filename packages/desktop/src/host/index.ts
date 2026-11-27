@@ -31,6 +31,7 @@ import {
   type IChannelServer,
   LoggingChannelServer,
   NetworkTelemetryChannelServer,
+  ProxyChannel,
 } from "@zcode/rpc";
 import { registerHostNetworkTelemetry, stopHostNetworkTelemetry } from "./hostNetworkTelemetry.js";
 import { registerHostServiceResourceTelemetry } from "./hostServiceResourceTelemetry.js";
@@ -48,6 +49,7 @@ import {
   ServiceCollection,
   IBotsService,
   ICredentialService,
+  ISpecializedModelSettingsService,
   IFileService,
   IClientConfigService,
   IMediaPreviewService,
@@ -1421,6 +1423,7 @@ console.error = (...args: unknown[]) => {
 let databaseStartup: ReturnType<typeof createHostDatabaseStartup> | undefined;
 const pendingStartupAttachments = new Map<string, () => void>();
 let activeServices: ServiceCollection | null = null;
+let createSpecializedModelSettingsAttachment: (() => ISpecializedModelSettingsService) | undefined;
 // 扩展门面（docs/plugins/extension-host.md）：InitLocal 建立服务后创建，Host 退出时断开扩展进程端口。
 let windowHostExtensions: WindowHostExtensions | null = null;
 /**
@@ -2479,6 +2482,16 @@ function exposeServicesOnMessagePort(
       ? { decorateWindowProjectService: webRemoteProjectTreeActivity.decorate }
       : {}),
   });
+  if (
+    clientMode === "desktop-continuous" &&
+    attachmentScope.kind === "local" &&
+    createSpecializedModelSettingsAttachment
+  ) {
+    server.registerChannel(
+      ISpecializedModelSettingsService.channelName,
+      ProxyChannel.fromService(createSpecializedModelSettingsAttachment()),
+    );
+  }
   let disposed = false;
   let flowUpdateChain = Promise.resolve();
   const forwardFlowState = (state: "saturated" | "drained" | "closed") => {
@@ -3653,6 +3666,9 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
               }),
               onAppControlServiceCreated: (handle) => {
                 appControlForExtensions = handle;
+              },
+              onSpecializedModelSettingsCreated: (createAttachment) => {
+                createSpecializedModelSettingsAttachment = createAttachment;
               },
               // 插件管理变更在 Window Host 成功返回后重推扩展进程的插件清单（§3.4），
               // 配置与重置另通知该插件的扩展设置订阅者（§16.7）。

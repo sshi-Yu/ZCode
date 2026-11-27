@@ -5594,6 +5594,10 @@ const enUS: Record<string, string> = {
     "This removes the custom provider configuration. Related edits on the current settings page will not be restored automatically.",
   "settings.modelProvider.deleteConfirmAction": "Delete provider",
   "settings.modelProvider.testModel": "Test model",
+  "settings.modelProvider.utilityModel.label": "Utility model",
+  "settings.modelProvider.utilityModel.set": "Mark as utility model",
+  "settings.modelProvider.utilityModel.clear": "Clear utility model marker",
+  "settings.modelProvider.utilityModel.saveFailed": "Could not save the utility model. Try again.",
   "settings.modelProvider.testModel.enableProviderFirst": "Enable the provider first",
   "settings.modelProvider.testModel.providerUnavailable":
     "This provider is currently unavailable for connectivity testing.",

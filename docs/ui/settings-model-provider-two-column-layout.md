@@ -27,6 +27,8 @@ CR-01 修复边界：基于 Reviewer 的 5cad9f6028 快照，仅调整 SectionLa
   - 预制/自定义：展示 endpoint、API Key（脱敏）、模型列表、Claude 槽位映射。
   - 选择 `添加供应商` 后，右侧进入新增表单。
 
+本机桌面的「图像」使用同一右详情区。小工具模型通过供应商模型行上的扳手按钮设置。配置与验收见 [图像模型与小工具模型](../superpowers/specs/2026-11-26-model-settings-images-and-tools.md)。
+
 ## 2026-07-02 Provider family 与连接方式分层
 
 - 左侧导航只负责选择 provider family 或自定义 provider。Z.ai / BigModel 在左侧各自只占一个入口，不随 Start Plan、个人 Coding Plan 或团队 Coding Plan 数量变化。

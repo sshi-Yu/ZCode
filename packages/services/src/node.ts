@@ -76,6 +76,8 @@ import {
 } from "./onboarding/localUsageEvidence.js";
 import {
   buildLocalMediaPreviewUrl,
+  isRemoteWorkspaceIdentity,
+  modelSelectionSchema,
   OAUTH_LINKED_BIGMODEL_KEY,
   OAUTH_SESSION_REVISION_KEY,
   type DynamicWorkflowMode,
@@ -470,6 +472,11 @@ import { createMediaPreviewService } from "./media-preview/mediaPreview.js";
 import type { WorkspaceFileSearchFilter } from "./file/workspaceFileMentionFilter.js";
 import { createGitService } from "./git/gitService.js";
 import { GitCommitMessageGenerator } from "./git/gitCommitMessageGenerator.js";
+import {
+  createSpecializedModelSettingsOwner,
+  IMAGE_MODEL_CREDENTIAL_PREFIX,
+} from "./specialized-model-settings/node.js";
+import type { ISpecializedModelSettingsService } from "./specialized-model-settings/contract.js";
 import { createGitCheckpointService } from "./git/gitCheckpointService.js";
 import { getWorkspaceCheckpointDirectory } from "./git/repo/gitCheckpointStore.js";
 import { createSystemService } from "./system/systemService.js";
@@ -1367,6 +1374,9 @@ export function createLocalServices(options: {
    * docs/plugins/extension-host.md §17.2）。它不注册进 ServiceCollection，也不在任何 RPC 频道上。
    */
   onAppControlServiceCreated?: (handle: AppControlServiceHandle) => void;
+  onSpecializedModelSettingsCreated?: (
+    createAttachmentService: () => ISpecializedModelSettingsService,
+  ) => void;
   /** browser-use 执行桥（host→main WebContentsView+CDP）；desktop host 注入，缺省则 browser 不可用。 */
   browserControlExecutor?: {
     list(input: {
@@ -2740,29 +2750,76 @@ export function createLocalServices(options: {
     taskIndexSyncer: zcodeTaskIndexSyncer,
     cuaProductMcpServerResolver,
   });
-  const gitCommitMessageGenerator = new GitCommitMessageGenerator({
-    currentModelProvider: {
-      async readCurrentModel() {
-        // Git sidecar 属于目标 Environment；初始模型直接读取同一 Host View，
-        // 不再通过临时 Agent workspace state 反推模型与 reasoning。
-        return (await providerRuntime.modelSelection.getView()).preferredSelection ?? null;
-      },
-    },
-    textGenerator: {
-      async generateText(params) {
-        return await zcodeAgentService.generateWorkspaceText({
-          workspacePath: params.workspacePath,
-          ...(params.workspaceIdentity ? { workspaceIdentity: params.workspaceIdentity } : {}),
-          selection: params.selection,
-          prompt: params.prompt,
-          querySource: params.querySource,
-        });
-      },
-    },
-    logger: createServiceLogger("git-commit-message"),
-  });
+  const specializedModelSettings =
+    options.onSpecializedModelSettingsCreated && !isDesktopAttachedRemote
+      ? createSpecializedModelSettingsOwner({
+          filePath: join(resolveAppConfigDir(), "specialized-model-settings.json"),
+          credentials: credentialService,
+          async readToolCandidates() {
+            // 未填密钥或暂未启用的模型不在可执行投影中，但仍可在设置里预先标记。
+            const view = await providerRuntime.providerSettings.getView();
+            return view.providers.flatMap(({ providerId, models }) =>
+              models.flatMap(({ modelId, effectiveConfig }) =>
+                effectiveConfig.properties?.inputFormat?.supportsText &&
+                effectiveConfig.properties.outputFormat?.supportsText
+                  ? [{ providerId, modelId }]
+                  : [],
+              ),
+            );
+          },
+          async readExecutableToolModels() {
+            const view = await providerRuntime.modelSelection.getView();
+            return view.providers.flatMap((provider) =>
+              provider.models.flatMap(({ modelId, config }) => {
+                if (
+                  !config.properties.inputFormat.supportsText ||
+                  !config.properties.outputFormat.supportsText
+                )
+                  return [];
+                const reasoningLevel = config.optionSpecs.reasoningLevel.values[0];
+                return [
+                  {
+                    providerId: provider.providerId,
+                    modelId,
+                    ...(reasoningLevel ? { options: { reasoningLevel } } : {}),
+                  },
+                ];
+              }),
+            );
+          },
+        })
+      : undefined;
+  if (specializedModelSettings)
+    options.onSpecializedModelSettingsCreated?.(specializedModelSettings.createAttachmentService);
+
   const gitService = createGitService({
-    commitMessageGenerator: gitCommitMessageGenerator,
+    commitMessageGenerator: new GitCommitMessageGenerator({
+      currentModelProvider: {
+        async readCurrentModel({ workspaceIdentity, sessionModel }) {
+          if (specializedModelSettings && !isRemoteWorkspaceIdentity(workspaceIdentity ?? "")) {
+            const utilityModel = await specializedModelSettings.resolveUtilityModel();
+            if (utilityModel) return utilityModel;
+          }
+          return (
+            modelSelectionSchema.safeParse(sessionModel).data ??
+            (await providerRuntime.modelSelection.getView()).preferredSelection ??
+            null
+          );
+        },
+      },
+      textGenerator: {
+        async generateText(params) {
+          return await zcodeAgentService.generateWorkspaceText({
+            workspacePath: params.workspacePath,
+            ...(params.workspaceIdentity ? { workspaceIdentity: params.workspaceIdentity } : {}),
+            selection: params.selection,
+            prompt: params.prompt,
+            querySource: params.querySource,
+          });
+        },
+      },
+      logger: createServiceLogger("git-commit-message"),
+    }),
   });
   // 终端实例需要同时注册给 renderer 与供 worktree 删除前的占用检查使用，必须是同一个实例。
   const terminalService = createTerminalService({
@@ -2984,6 +3041,8 @@ export function createLocalServices(options: {
   // 个人工作台商业服务拆除：营销 touch 已退役。旧 RPC 面保留明确拒绝（不做空成功、
   // 不再发 /api/v1/marketing/* 请求、不读取账号凭据），云端 bundle 授权来源同步移除，
   // 旧营销资源 URL 将无法通过 cloud-content 的来源白名单校验。
+  const isPrivateCredential = (key: string) =>
+    key === OAUTH_LINKED_BIGMODEL_KEY || key.startsWith(IMAGE_MODEL_CREDENTIAL_PREFIX);
   const services = new ServiceCollection()
     .register(IMarketingTouchService, createRetiredMarketingTouchService())
     .register(
@@ -3017,15 +3076,15 @@ export function createLocalServices(options: {
       inspectStore: () => credentialService.inspectStore(),
       recoverStore: (fingerprint) => credentialService.recoverStore(fingerprint),
       load: (key) => {
-        if (key === OAUTH_LINKED_BIGMODEL_KEY) throw new Error("Host private credential");
+        if (isPrivateCredential(key)) throw new Error("Host private credential");
         return credentialService.load(key);
       },
       save: (key, value) => {
-        if (key === OAUTH_LINKED_BIGMODEL_KEY) throw new Error("Host private credential");
+        if (isPrivateCredential(key)) throw new Error("Host private credential");
         return credentialService.save(key, value);
       },
       delete: (key) => {
-        if (key === OAUTH_LINKED_BIGMODEL_KEY) throw new Error("Host private credential");
+        if (isPrivateCredential(key)) throw new Error("Host private credential");
         return credentialService.delete(key);
       },
     })

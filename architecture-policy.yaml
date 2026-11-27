@@ -178,6 +178,28 @@ modules:
       contract: contract.ts
       ui: .
     owner: ui
+  - id: specialized-model-settings
+    roots: [packages/services/src/specialized-model-settings]
+    managed: true
+    requires: [services, shared]
+    publicEntrypoints:
+      - packages/services/src/specialized-model-settings/contract.ts
+      - packages/services/src/specialized-model-settings/node.ts
+    layers:
+      contract: contract.ts
+      adapters: .
+    owner: services
+  - id: specialized-model-settings-ui
+    roots: [packages/ui/src/settings/specialized-model-settings]
+    managed: true
+    requires: [services, ui]
+    publicEntrypoints:
+      - packages/ui/src/settings/specialized-model-settings/contract.ts
+      - packages/ui/src/settings/specialized-model-settings/index.ts
+    layers:
+      contract: contract.ts
+      ui: .
+    owner: ui
   - id: web
     roots: [packages/web/src]
     managed: false

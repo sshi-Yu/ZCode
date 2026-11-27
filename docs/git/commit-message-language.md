@@ -22,6 +22,12 @@ AI 生成 Git commit message 时需要遵循当前界面语言。用户选择固
 - 如果当前会话已有文件修改 summary，UI 同时传入 `currentSessionFilePaths`；服务层只用这些文件匹配到的 staged/unstaged changes 和 diff 生成提交信息，避免其它工作区变更污染主题。
 - 提交弹窗里的 staged/unstaged 文件列表也用同一份当前会话文件 summary 过滤；勾选“包含未暂存的更改”时，只 stage 并提交当前会话文件对应的未暂存改动。
 - 提交弹窗底部动作区使用 Command 列表承载“提交 / 提交并推送 / 推送”；当前选中动作可通过主快捷键加 Enter 触发，macOS 使用 Command，Windows/Linux 使用 Ctrl。
+- 从对话的 Git 变更浮层打开「提交或推送」时，关闭原浮层，再展示提交或推送对话框。对话框属于会话状态区而非浮层，关闭对话框不会重新打开浮层。
+
+  ```text
+  Git 浮层入口 → 关闭浮层 → 会话状态区打开提交／推送对话框
+                            └─ 关闭对话框，不重新打开浮层
+  ```
 - 服务层归一化语言后写入模型 prompt。
 - 旧调用未传 `locale` 时，服务层尝试读取运行时 Intl locale；仍不可用则使用英文。
 

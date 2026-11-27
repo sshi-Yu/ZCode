@@ -26,6 +26,7 @@ function withLocalOnlyAccountServices(
 ): IServiceAccessor {
   return {
     ...services,
+    specializedModelSettingsService: undefined,
     highspeedCardService: remoteUnsupportedHighspeedCardService,
     offPeakTaskService: baseServices.offPeakTaskService,
   };

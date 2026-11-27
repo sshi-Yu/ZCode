@@ -5115,6 +5115,10 @@ const koKR: Record<string, string> = {
     "사용자 지정 공급자 구성이 삭제됩니다. 현재 설정 페이지에서 변경한 관련 내용은 자동으로 복원되지 않습니다.",
   "settings.modelProvider.deleteConfirmAction": "공급자 삭제",
   "settings.modelProvider.testModel": "모델 테스트",
+  "settings.modelProvider.utilityModel.label": "유틸리티 모델",
+  "settings.modelProvider.utilityModel.set": "유틸리티 모델로 지정",
+  "settings.modelProvider.utilityModel.clear": "유틸리티 모델 지정 해제",
+  "settings.modelProvider.utilityModel.saveFailed": "유틸리티 모델을 저장하지 못했습니다. 다시 시도해 주세요.",
   "settings.modelProvider.testModel.enableProviderFirst": "먼저 공급자를 사용하도록 설정하세요",
   "settings.modelProvider.testModel.providerUnavailable":
     "현재 이 공급자는 연결 테스트에 사용할 수 없습니다.",

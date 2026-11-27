@@ -5224,6 +5224,10 @@ const ruRU: Record<string, string> = {
     "Конфигурация пользовательского провайдера будет удалена. Связанные изменения на текущей странице настроек не будут восстановлены автоматически.",
   "settings.modelProvider.deleteConfirmAction": "Удалить провайдера",
   "settings.modelProvider.testModel": "Проверить модель",
+  "settings.modelProvider.utilityModel.label": "Модель для утилит",
+  "settings.modelProvider.utilityModel.set": "Назначить модель для утилит",
+  "settings.modelProvider.utilityModel.clear": "Снять назначение модели для утилит",
+  "settings.modelProvider.utilityModel.saveFailed": "Не удалось сохранить модель для утилит. Повторите попытку.",
   "settings.modelProvider.testModel.enableProviderFirst": "Сначала включите провайдера",
   "settings.modelProvider.testModel.providerUnavailable":
     "Этот провайдер сейчас недоступен для проверки подключения.",

@@ -67,7 +67,7 @@ export function shouldShowModelProviderGroupLoadingIndicator(params: {
   if (params.groupId === "preset") {
     return params.presetLoading;
   }
-  return params.customLoading;
+  return params.groupId === "custom" && params.customLoading;
 }
 
 export function resolveModelProviderSideNavLabel(item: ModelProviderNavItem): string {
@@ -106,6 +106,7 @@ function ModelProviderNavigationButton({
         aria-selected={isSelected}
         data-state={isSelected ? "selected" : "idle"}
         data-testid={testId(TID_MODEL_PROVIDER_NAV_ITEM, item.key)}
+        data-model-settings-group={item.type === "imageSettings" ? "image" : undefined}
         onClick={() => {
           if (isLoadingItem) {
             return;
@@ -400,7 +401,7 @@ export function ModelProviderSectionNavigation({
                 ) : null}
               </div>
 
-              {group.id === "preset" ? (
+              {group.id !== "custom" ? (
                 <PresetProviderCardNavigation
                   group={group}
                   selectedNodeKey={selectedNodeKey}

@@ -311,6 +311,7 @@ export function StatusCapsule({
 
 export interface ConversationStatusPanelProps {
   workspacePath: string;
+  gitSessionModel?: import("@zcode/shared").ModelSelection;
   /** Git 操作所在目录；worktree 任务是会话 cwd，缺省为 workspacePath（docs/git/worktree.md §3.7）。 */
   gitCwd?: string;
   workspaceIdentity?: string;
@@ -1410,6 +1411,24 @@ function ConversationStatusPanelImpl(props: ConversationStatusPanelProps) {
     : model.plan && model.plan.completedCount === model.plan.totalCount
       ? "completed"
       : "pending";
+  const renderGitCapsule = (action?: ReactNode) => (
+    <StatusCapsule
+      id="git"
+      icon={<FileDiffIcon className="size-4" />}
+      label={intl.formatMessage(
+        { id: "chat.capsule.files" },
+        { count: files.length || props.gitDirtyFileCount || 0 },
+      )}
+      secondary={
+        <>
+          <span className="text-diff-added">+{props.gitWorktreeChangeSummary?.added ?? 0}</span>
+          <span className="text-diff-removed">−{props.gitWorktreeChangeSummary?.removed ?? 0}</span>
+        </>
+      }
+    >
+      {renderGitChanges(action)}
+    </StatusCapsule>
+  );
   return (
     <>
       {goal ? (
@@ -1454,219 +1473,219 @@ function ConversationStatusPanelImpl(props: ConversationStatusPanelProps) {
           <PlanStatusSection model={model} />
         </StatusCapsule>
       ) : null}
-      {canGit ? (
-        <StatusCapsule
-          id="git"
-          icon={<FileDiffIcon className="size-4" />}
-          label={intl.formatMessage(
-            { id: "chat.capsule.files" },
-            { count: files.length || props.gitDirtyFileCount || 0 },
-          )}
-          secondary={
-            <>
-              <span className="text-diff-added">+{props.gitWorktreeChangeSummary?.added ?? 0}</span>
-              <span className="text-diff-removed">
-                −{props.gitWorktreeChangeSummary?.removed ?? 0}
-              </span>
-            </>
-          }
-        >
-          {/* 滚动视口抵达面板边缘，留白放在内容内，避免滚动条随外层 p-2 内缩。 */}
-          <ScrollFadeViewport
-            data-testid="status-git-files"
-            className="-mx-2 max-h-64 flex-none overscroll-y-contain px-2"
-          >
-            {changes.map(({ change, source }) => (
-              <button
-                key={source + ":" + change.path}
-                type="button"
-                title={`${change.workspaceRelativePath || change.path} · ${intl.formatMessage({ id: "chat.capsule." + source })}`}
-                aria-label={`${change.workspaceRelativePath || change.path} ${intl.formatMessage({ id: "chat.capsule." + source })} ${change.added + change.removed > 0 ? `+${change.added} -${change.removed}` : intl.formatMessage({ id: "chat.capsule.fileChanged" })}`}
-                className="flex w-full items-center gap-2 rounded-lg p-2 text-left text-ui-base hover:bg-hover"
-                onClick={closeOnNavigate(() => gitData?.openChange(change.path, source))}
-              >
-                <FileDisplayIcon
-                  src={resolveFileDisplayDescriptor(change.path).fileIconSrc}
-                  size={16}
-                  className="shrink-0"
-                />
-                <span className="min-w-0 flex-1 truncate">
-                  {resolveFileDisplayDescriptor(change.path).fileName}
-                </span>
-                {change.added + change.removed > 0 ? (
-                  <span className="shrink-0">
-                    <span className="text-diff-added">+{change.added}</span>{" "}
-                    <span className="text-diff-removed">-{change.removed}</span>
-                  </span>
-                ) : null}
-              </button>
-            ))}
-          </ScrollFadeViewport>
-          {gitSummary ? (
-            <div>
-              {/* 分隔线独立留白，避免操作区单侧 padding 造成上下间距不均。 */}
-              {changes.length > 0 ? (
-                <div aria-hidden="true" className="my-1 border-t-[0.5px] border-border/50" />
-              ) : null}
-              <Button
-                data-testid="status-git-view-all"
-                variant="ghost"
-                className="h-8 w-full justify-start gap-2 rounded-lg border-0 px-2 text-left text-ui-base"
-                disabled={!onOpenGitReview}
-                onClick={() => onOpenGitReview?.(props.gitWorktreeReviewSourceId ?? undefined)}
-              >
-                <FileDiffIcon className="size-4" />
-                <span className="min-w-0 flex-1 text-left">
-                  {intl.formatMessage({ id: "chat.statusPanel.viewAllChanges" })}
-                </span>
-                <span className="shrink-0 text-ui-sm text-foreground-subtle">
-                  {files.length || props.gitDirtyFileCount || 0}
-                </span>
-              </Button>
-              {onRefreshGit ? (
-                <div data-testid="status-git-current-branch">
-                  <HostedGitBranchSwitcher
-                    restoreFocusToTrigger
-                    workspacePath={gitCwd ?? workspacePath}
-                    gitSummary={gitSummary}
-                    dirtyFileCount={files.length || props.gitDirtyFileCount || 0}
-                    onRefreshGit={onRefreshGit}
-                    onModalOpen={() => capsuleContext?.setOpen(null)}
-                    className="min-w-0 w-full p-0"
-                    triggerClassName="h-8 w-full justify-start gap-2 rounded-lg border-0 px-2 text-left text-ui-base [&_svg]:shrink-0 [&_[data-branch-switcher-primary-icon]]:text-foreground"
-                    renderTriggerLabel={(label) => (
-                      <span className="min-w-0 flex-1">
-                        <StatusCapsuleTitle title={label} />
-                      </span>
-                    )}
-                  />
-                </div>
-              ) : (
-                <div
-                  data-testid="status-git-current-branch"
-                  title={branchLabel}
-                  className="flex h-8 w-full min-w-0 items-center gap-2 px-2 text-ui-base"
-                >
-                  <GitBranchIcon className="size-4 shrink-0" />
-                  <StatusCapsuleTitle title={branchLabel} />
-                </div>
-              )}
-              {onRefreshGit ? (
-                <GitActionMenu
-                  workspacePath={gitCwd ?? workspacePath}
-                  workspaceIdentity={workspaceIdentity}
-                  gitSummary={gitSummary}
-                  activeTaskChangeSummary={props.activeTaskChangeSummary ?? null}
-                  onRefreshGit={onRefreshGit}
-                  triggerLayout="status-row"
-                />
-              ) : null}
-            </div>
-          ) : null}
-        </StatusCapsule>
-      ) : null}
-      {activities.length > 0 || endedActivities.length > 0 || hasHistoryEntry ? (
-        <StatusCapsule
-          id="activity"
-          // 计数与实际渲染共用去重模型；已结束摘要不计入运行数。
-          dataAttributes={{
-            "data-background-bash-count": model.runningBashWorks.length,
-            "data-background-workflow-count": model.runningWorkflowRuns.length,
-            "data-background-subagent-count": model.runningSubagentWorks.length,
-            "data-background-total-count": activities.length,
-          }}
-          icon={
-            <span className="relative flex">
-              {activityAvatars.length ? (
-                <span className="isolate flex -space-x-1.5" aria-hidden="true">
-                  {activityAvatars.map(([id, avatar], index) => (
-                    // 徽标画在头像左下角；后一个头像整体置顶，保持自身徽标不被前一个头像挡住。
-                    <span
-                      key={id}
-                      className="relative size-4 shrink-0"
-                      style={{ zIndex: index + 1 }}
-                    >
-                      <WorkflowAgentFace
-                        avatarIndex={undefined}
-                        name={avatar.name}
-                        color={avatar.color}
-                        status={avatar.status}
-                        result={avatar.result}
-                        idle={avatar.result === "stopped"}
-                        motionPaused={Boolean(avatar.result)}
-                        outlineColor="var(--color-input)"
-                        className="relative size-4 min-h-4! min-w-4!"
-                      />
-                    </span>
-                  ))}
-                </span>
-              ) : (
-                <MonitorActivityIcon className="size-4" aria-hidden="true" />
-              )}
-              {!activityAvatars.length && !activities.length && endedActivities.length > 0 ? (
-                <svg
-                  aria-hidden
-                  className="pointer-events-none absolute bottom-0 left-0 size-4 overflow-visible"
-                  viewBox="0 0 20 20"
-                >
-                  <AgentResultBadge result={activityResult} />
-                </svg>
-              ) : null}
-            </span>
-          }
-          label={intl.formatMessage({ id: activityLabel })}
-          secondary={
-            activityCount ||
-            (endedActivities.length > 0 && activityResult === "stopped"
-              ? intl.formatMessage({ id: `chat.capsule.activity.${activityResult}` })
-              : activityCount === null
-                ? undefined
-                : 0)
-          }
-        >
-          <div className="max-h-72 overflow-y-auto">
-            {[...activities, ...endedActivities].map((activity) => (
-              <ul key={activity.id} data-activity-id={activity.id}>
-                {activity.node}
-              </ul>
-            ))}
-          </div>
-          {hasHistoryEntry ? (
-            <>
-              <EndedDirectoryRow
-                count={hasSubagentDirectory ? (props.endedSubagentCount ?? 0) : 0}
-                icon={<SubagentCollectionIcon className="size-4 min-h-4! min-w-4!" />}
-                label={intl.formatMessage({ id: "sidePane.subagentDirectory" })}
-                testId="activity-subagent-directory"
-                separated={activities.length + endedActivities.length > 0}
-                onOpen={
-                  parentSessionId && onOpenSubagentDirectory
-                    ? () =>
-                        onOpenSubagentDirectory?.({
-                          parentSessionId,
-                          rootSessionId: rootSessionId ?? parentSessionId,
-                        })
-                    : undefined
-                }
-              />
-              <EndedDirectoryRow
-                count={hasWorkflowDirectory ? (props.endedWorkflowRunCount ?? 0) : 0}
-                icon={<WorkflowIcon className="size-4 shrink-0 text-foreground-subtle" />}
-                label={intl.formatMessage({ id: "sidePane.workflowDirectory" })}
-                testId="activity-workflow-directory"
-                separated={activities.length + endedActivities.length > 0 && !hasSubagentDirectory}
-                onOpen={
-                  parentSessionId && onOpenWorkflowRunDirectory
-                    ? () => onOpenWorkflowRunDirectory?.({ parentSessionId })
-                    : undefined
-                }
-              />
-            </>
-          ) : null}
-        </StatusCapsule>
-      ) : null}
+      {renderGitAction()}
+      {renderActivityCapsule()}
     </>
   );
+
+  function renderGitAction() {
+    // 对话框不能随变更浮层卸载；只有操作入口放在浮层里。
+    return gitSummary?.isRepository && onRefreshGit && !isOfficeMode ? (
+      <GitActionMenu
+        key={JSON.stringify([workspaceIdentity?.trim() || workspacePath, gitCwd])}
+        workspacePath={gitCwd ?? workspacePath}
+        workspaceIdentity={workspaceIdentity}
+        sessionModel={props.gitSessionModel}
+        gitSummary={gitSummary}
+        activeTaskChangeSummary={props.activeTaskChangeSummary ?? null}
+        onRefreshGit={onRefreshGit}
+        triggerLayout="status-row"
+        renderTrigger={(trigger) => (canGit ? renderGitCapsule(trigger) : null)}
+        onOpenDialog={() => capsuleContext?.setOpen(null)}
+      />
+    ) : canGit ? (
+      renderGitCapsule()
+    ) : null;
+  }
+
+  function renderGitChanges(action?: ReactNode) {
+    return (
+      <>
+        {/* 滚动视口抵达面板边缘，留白放在内容内，避免滚动条随外层 p-2 内缩。 */}
+        <ScrollFadeViewport
+          data-testid="status-git-files"
+          className="-mx-2 max-h-64 flex-none overscroll-y-contain px-2"
+        >
+          {changes.map(({ change, source }) => (
+            <button
+              key={source + ":" + change.path}
+              type="button"
+              title={`${change.workspaceRelativePath || change.path} · ${intl.formatMessage({ id: "chat.capsule." + source })}`}
+              aria-label={`${change.workspaceRelativePath || change.path} ${intl.formatMessage({ id: "chat.capsule." + source })} ${change.added + change.removed > 0 ? `+${change.added} -${change.removed}` : intl.formatMessage({ id: "chat.capsule.fileChanged" })}`}
+              className="flex w-full items-center gap-2 rounded-lg p-2 text-left text-ui-base hover:bg-hover"
+              onClick={closeOnNavigate(() => gitData?.openChange(change.path, source))}
+            >
+              <FileDisplayIcon
+                src={resolveFileDisplayDescriptor(change.path).fileIconSrc}
+                size={16}
+                className="shrink-0"
+              />
+              <span className="min-w-0 flex-1 truncate">
+                {resolveFileDisplayDescriptor(change.path).fileName}
+              </span>
+              {change.added + change.removed > 0 ? (
+                <span className="shrink-0">
+                  <span className="text-diff-added">+{change.added}</span>{" "}
+                  <span className="text-diff-removed">-{change.removed}</span>
+                </span>
+              ) : null}
+            </button>
+          ))}
+        </ScrollFadeViewport>
+        {gitSummary ? (
+          <div>
+            {/* 分隔线独立留白，避免操作区单侧 padding 造成上下间距不均。 */}
+            {changes.length > 0 ? (
+              <div aria-hidden="true" className="my-1 border-t-[0.5px] border-border/50" />
+            ) : null}
+            <Button
+              data-testid="status-git-view-all"
+              variant="ghost"
+              className="h-8 w-full justify-start gap-2 rounded-lg border-0 px-2 text-left text-ui-base"
+              disabled={!onOpenGitReview}
+              onClick={() => onOpenGitReview?.(props.gitWorktreeReviewSourceId ?? undefined)}
+            >
+              <FileDiffIcon className="size-4" />
+              <span className="min-w-0 flex-1 text-left">
+                {intl.formatMessage({ id: "chat.statusPanel.viewAllChanges" })}
+              </span>
+              <span className="shrink-0 text-ui-sm text-foreground-subtle">
+                {files.length || props.gitDirtyFileCount || 0}
+              </span>
+            </Button>
+            {onRefreshGit ? (
+              <div data-testid="status-git-current-branch">
+                <HostedGitBranchSwitcher
+                  restoreFocusToTrigger
+                  workspacePath={gitCwd ?? workspacePath}
+                  gitSummary={gitSummary}
+                  dirtyFileCount={files.length || props.gitDirtyFileCount || 0}
+                  onRefreshGit={onRefreshGit}
+                  onModalOpen={() => capsuleContext?.setOpen(null)}
+                  className="min-w-0 w-full p-0"
+                  triggerClassName="h-8 w-full justify-start gap-2 rounded-lg border-0 px-2 text-left text-ui-base [&_svg]:shrink-0 [&_[data-branch-switcher-primary-icon]]:text-foreground"
+                  renderTriggerLabel={(label) => (
+                    <span className="min-w-0 flex-1">
+                      <StatusCapsuleTitle title={label} />
+                    </span>
+                  )}
+                />
+              </div>
+            ) : (
+              <div
+                data-testid="status-git-current-branch"
+                title={branchLabel}
+                className="flex h-8 w-full min-w-0 items-center gap-2 px-2 text-ui-base"
+              >
+                <GitBranchIcon className="size-4 shrink-0" />
+                <StatusCapsuleTitle title={branchLabel} />
+              </div>
+            )}
+            {action}
+          </div>
+        ) : null}
+      </>
+    );
+  }
+
+  function renderActivityCapsule() {
+    return activities.length > 0 || endedActivities.length > 0 || hasHistoryEntry ? (
+      <StatusCapsule
+        id="activity"
+        // 计数与实际渲染共用去重模型；已结束摘要不计入运行数。
+        dataAttributes={{
+          "data-background-bash-count": model.runningBashWorks.length,
+          "data-background-workflow-count": model.runningWorkflowRuns.length,
+          "data-background-subagent-count": model.runningSubagentWorks.length,
+          "data-background-total-count": activities.length,
+        }}
+        icon={
+          <span className="relative flex">
+            {activityAvatars.length ? (
+              <span className="isolate flex -space-x-1.5" aria-hidden="true">
+                {activityAvatars.map(([id, avatar], index) => (
+                  // 徽标画在头像左下角；后一个头像整体置顶，保持自身徽标不被前一个头像挡住。
+                  <span key={id} className="relative size-4 shrink-0" style={{ zIndex: index + 1 }}>
+                    <WorkflowAgentFace
+                      avatarIndex={undefined}
+                      name={avatar.name}
+                      color={avatar.color}
+                      status={avatar.status}
+                      result={avatar.result}
+                      idle={avatar.result === "stopped"}
+                      motionPaused={Boolean(avatar.result)}
+                      outlineColor="var(--color-input)"
+                      className="relative size-4 min-h-4! min-w-4!"
+                    />
+                  </span>
+                ))}
+              </span>
+            ) : (
+              <MonitorActivityIcon className="size-4" aria-hidden="true" />
+            )}
+            {!activityAvatars.length && !activities.length && endedActivities.length > 0 ? (
+              <svg
+                aria-hidden
+                className="pointer-events-none absolute bottom-0 left-0 size-4 overflow-visible"
+                viewBox="0 0 20 20"
+              >
+                <AgentResultBadge result={activityResult} />
+              </svg>
+            ) : null}
+          </span>
+        }
+        label={intl.formatMessage({ id: activityLabel })}
+        secondary={
+          activityCount ||
+          (endedActivities.length > 0 && activityResult === "stopped"
+            ? intl.formatMessage({ id: `chat.capsule.activity.${activityResult}` })
+            : activityCount === null
+              ? undefined
+              : 0)
+        }
+      >
+        <div className="max-h-72 overflow-y-auto">
+          {[...activities, ...endedActivities].map((activity) => (
+            <ul key={activity.id} data-activity-id={activity.id}>
+              {activity.node}
+            </ul>
+          ))}
+        </div>
+        {hasHistoryEntry ? (
+          <>
+            <EndedDirectoryRow
+              count={hasSubagentDirectory ? (props.endedSubagentCount ?? 0) : 0}
+              icon={<SubagentCollectionIcon className="size-4 min-h-4! min-w-4!" />}
+              label={intl.formatMessage({ id: "sidePane.subagentDirectory" })}
+              testId="activity-subagent-directory"
+              separated={activities.length + endedActivities.length > 0}
+              onOpen={
+                parentSessionId && onOpenSubagentDirectory
+                  ? () =>
+                      onOpenSubagentDirectory?.({
+                        parentSessionId,
+                        rootSessionId: rootSessionId ?? parentSessionId,
+                      })
+                  : undefined
+              }
+            />
+            <EndedDirectoryRow
+              count={hasWorkflowDirectory ? (props.endedWorkflowRunCount ?? 0) : 0}
+              icon={<WorkflowIcon className="size-4 shrink-0 text-foreground-subtle" />}
+              label={intl.formatMessage({ id: "sidePane.workflowDirectory" })}
+              testId="activity-workflow-directory"
+              separated={activities.length + endedActivities.length > 0 && !hasSubagentDirectory}
+              onOpen={
+                parentSessionId && onOpenWorkflowRunDirectory
+                  ? () => onOpenWorkflowRunDirectory?.({ parentSessionId })
+                  : undefined
+              }
+            />
+          </>
+        ) : null}
+      </StatusCapsule>
+    ) : null;
+  }
 }
 
 export const ConversationStatusPanel = memo(ConversationStatusPanelImpl);

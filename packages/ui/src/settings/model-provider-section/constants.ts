@@ -218,9 +218,14 @@ export type ModelProviderNavItem =
       label: string;
       provider: ProviderSettingsFormProvider;
       statusActive: boolean;
+    }
+  | {
+      key: `specialized:${"image" | "tool"}`;
+      type: "imageSettings";
+      label: string;
     };
 
-export type ModelProviderNavGroupId = "preset" | "custom";
+export type ModelProviderNavGroupId = "preset" | "custom" | "image" | "tool";
 
 export interface ModelProviderNavGroup {
   id: ModelProviderNavGroupId;

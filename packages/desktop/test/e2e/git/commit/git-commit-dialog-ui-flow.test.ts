@@ -1,11 +1,27 @@
 import { openStatusCapsule } from "#e2e/helpers/status-capsule";
 import { execFile } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
-import { DEFAULT_WORKSPACE, clearAppData, waitForWorkspaceApp } from "#e2e/helpers/desktop-app";
 import {
-  E2E_REPLY_TOKEN,
+  DEFAULT_WORKSPACE,
+  clearAppData,
+  clickTestIdByDom,
+  waitForWorkspaceApp,
+} from "#e2e/helpers/desktop-app";
+import {
+  restartIntoWorkspace,
+  seedReplayProvider,
+  seedTurboAgentStartupModel,
+} from "#e2e/helpers/model-provider-restart";
+import {
+  TID_MODEL_PROVIDER_NAV_ITEM,
+  TID_SETTINGS_BACK_BUTTON,
+  TID_SETTINGS_SECTION_NAV,
+  TID_TASK_SETTINGS_BUTTON,
+} from "@zcode/shared/test-ids";
+import {
   buildReadonlyToolPrompt,
   ensureReadonlyToolFixtureFile,
 } from "#e2e/helpers/conversation-session";
@@ -13,6 +29,7 @@ import { sel } from "#e2e/helpers/selectors";
 import {
   prepareV4ConversationE2E,
   sendV4Prompt,
+  waitForV4AssistantMessageContaining,
   waitForV4Pane,
   waitForV4TimelineContaining,
 } from "#e2e/helpers/v4-conversation";
@@ -27,6 +44,7 @@ const TID_GIT_COMMIT_DIALOG = "git-commit-dialog";
 const TID_GIT_COMMIT_GENERATE_BUTTON = "git-commit-generate-button";
 const TID_GIT_COMMIT_INCLUDE_UNSTAGED = "git-commit-include-unstaged";
 const TID_GIT_COMMIT_MESSAGE_INPUT = "git-commit-message-input";
+const GIT_CAPSULE_CONTENT = '[data-status-capsule-content="git"]';
 const GIT_FIXTURE_FILE = join(".zcode-e2e", "git-commit-dialog", "tracked-file.md");
 const GIT_FIXTURE_STAGED_FILE = join(".zcode-e2e", "git-commit-dialog", "staged-file.md");
 const execGit = promisify(execFile);
@@ -36,6 +54,14 @@ function testId(base: string, suffix: string): string {
 }
 
 describe("Git 提交弹窗 UI manual-review E2E", () => {
+  before(async function () {
+    this.timeout(TEST_TIMEOUT_MS);
+    await enlargeWindowIfSupported();
+    await waitForWorkspaceApp(DEFAULT_WORKSPACE, 30000);
+    await prepareGitRepositoryFixture();
+    await createActiveTaskForSummaryPanel();
+  });
+
   after(async () => {
     await browser.electron.restoreAllMocks();
     await clearAppData();
@@ -44,13 +70,10 @@ describe("Git 提交弹窗 UI manual-review E2E", () => {
   it("GCD-UI-01: 打开提交弹窗后可聚焦输入、切换未暂存范围、用方向键切换 Command 动作并展开分支列表", async function () {
     this.timeout(TEST_TIMEOUT_MS);
 
-    await enlargeWindowIfSupported();
-    await waitForWorkspaceApp(DEFAULT_WORKSPACE, 30000);
-    await prepareGitRepositoryFixture();
-    await createActiveTaskForSummaryPanel();
     await expandSummaryPanelIfCollapsed();
     await openCommitDialog();
     await waitForCommitDialogReady();
+    await $(GIT_CAPSULE_CONTENT).waitForDisplayed({ reverse: true });
 
     await assertDialogOverlayVisible();
     // 圆角规范迁移：提交弹窗曾局部覆盖为 xl，读取计算样式防止覆盖共享 2xl 默认值。
@@ -78,8 +101,108 @@ describe("Git 提交弹窗 UI manual-review E2E", () => {
 
     await openBranchSwitcherFromDialog();
     await waitForBranchOption(TARGET_BRANCH);
+    await browser.keys("Escape");
+    await $(sel(testId(TID_GIT_COMMIT_ACTION_ITEM, "push"))).click();
+    await $(
+      `[data-slot="dialog-content"]:not(${sel(TID_GIT_COMMIT_DIALOG)}) [data-slot="dialog-title"]`,
+    ).waitForDisplayed();
+    await $(sel(TID_GIT_COMMIT_DIALOG)).waitForDisplayed({ reverse: true });
+    await $(GIT_CAPSULE_CONTENT).waitForDisplayed({ reverse: true });
+    await browser.keys("Escape");
+    await $(GIT_CAPSULE_CONTENT).waitForDisplayed({ reverse: true });
+  });
+
+  it("uses the marked model, then falls back to the session model after clearing it", async function () {
+    this.timeout(180_000);
+    let requests = 0;
+    const fixture = createServer((request, response) => {
+      void (async () => {
+        const chunks: Buffer[] = [];
+        for await (const chunk of request) chunks.push(Buffer.from(chunk));
+        const { model } = JSON.parse(Buffer.concat(chunks).toString()) as { model?: string };
+        if (model !== "git-tool-model") {
+          response.writeHead(400).end();
+          return;
+        }
+        requests += 1;
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            id: "tool-git-response",
+            object: "chat.completion",
+            created: 1,
+            model,
+            choices: [
+              {
+                index: 0,
+                message: { role: "assistant", content: "test(git): review generated draft" },
+                finish_reason: "stop",
+              },
+            ],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          }),
+        );
+      })().catch(() => response.writeHead(400).end());
+    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        fixture.once("error", reject);
+        fixture.listen(0, "127.0.0.1", resolve);
+      });
+      const address = fixture.address();
+      if (!address || typeof address === "string") throw new Error("Git fixture did not bind");
+      await restartIntoWorkspace({
+        afterElectronProcessExit: async () => {
+          await seedReplayProvider({
+            id: "git-tool-provider",
+            name: "Git Tool Provider",
+            apiKey: "e2e-only",
+            models: ["git-tool-model"],
+            baseURL: `http://127.0.0.1:${address.port}/v1`,
+          });
+          await seedTurboAgentStartupModel("git-tool-provider", "git-tool-model");
+        },
+      });
+      const head = (await execGit("git", ["rev-parse", "HEAD"], { cwd: DEFAULT_WORKSPACE })).stdout;
+      await toggleUtilityModel(true);
+      await generateAndExpectDraft("test(git): review generated draft");
+      await browser.keys("Escape");
+      await toggleUtilityModel(false);
+      await generateAndExpectDraft("test(git): use the session model");
+      expect(requests).toBe(1);
+      expect((await execGit("git", ["rev-parse", "HEAD"], { cwd: DEFAULT_WORKSPACE })).stdout).toBe(
+        head,
+      );
+    } finally {
+      if (fixture.listening) await new Promise<void>((resolve) => fixture.close(() => resolve()));
+    }
   });
 });
+
+async function toggleUtilityModel(pressed: boolean) {
+  await clickTestIdByDom(TID_TASK_SETTINGS_BUTTON);
+  await clickTestIdByDom(testId(TID_SETTINGS_SECTION_NAV, "modelProvider"));
+  await clickTestIdByDom(testId(TID_MODEL_PROVIDER_NAV_ITEM, "custom:git-tool-provider"));
+  const button =
+    '[data-model-provider-model-id="git-tool-model"] [data-testid="model-utility-toggle"]';
+  await $(button).waitForEnabled();
+  await $(button).click();
+  await browser.waitUntil(
+    async () => (await $(button).getAttribute("aria-pressed")) === String(pressed),
+  );
+  await clickTestIdByDom(TID_SETTINGS_BACK_BUTTON);
+}
+
+async function generateAndExpectDraft(message: string) {
+  await expandSummaryPanelIfCollapsed();
+  await openCommitDialog();
+  await waitForCommitDialogReady();
+  await $(sel(TID_GIT_COMMIT_GENERATE_BUTTON)).click();
+  await browser.waitUntil(
+    async () => (await $(sel(TID_GIT_COMMIT_MESSAGE_INPUT)).getValue()) === message,
+    { timeout: 30_000 },
+  );
+}
 
 async function enlargeWindowIfSupported() {
   try {
@@ -126,7 +249,7 @@ async function createActiveTaskForSummaryPanel() {
   const marker = `E2E_GIT_COMMIT_DIALOG_${Date.now()}`;
   await sendV4Prompt(buildReadonlyToolPrompt(marker));
   await waitForV4TimelineContaining(marker);
-  await waitForV4TimelineContaining(E2E_REPLY_TOKEN, 90000);
+  await waitForV4AssistantMessageContaining("e2e-ok", 90000);
   await waitForV4Pane(
     (snapshot) =>
       !snapshot.canStop && Boolean(snapshot.sessionId) && snapshot.sessionId !== "draft",

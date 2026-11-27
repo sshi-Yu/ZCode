@@ -27,6 +27,7 @@ export function createMessagePortServiceConnection(
   options: {
     sourceServerManagementService?: boolean;
     deviceSyncStateService?: boolean;
+    specializedModelSettingsService?: boolean;
     extensionsService?: boolean;
     managedWorktreeService?: boolean;
   } = {},
@@ -65,6 +66,7 @@ export function connectViaMessagePort(
   options: {
     sourceServerManagementService?: boolean;
     deviceSyncStateService?: boolean;
+    specializedModelSettingsService?: boolean;
     extensionsService?: boolean;
     managedWorktreeService?: boolean;
   } = {},

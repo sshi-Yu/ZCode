@@ -12,6 +12,7 @@ import { formatModelContextWindowLabel } from "@/lib/tokenNumberFormat.js";
 import type { ModelConfigResolution, ProviderConfigObject } from "@zcode/provider";
 import { shouldShowModelVisionBadge } from "@/lib/modelVisionBadge.js";
 import { useProviderDetailFeedback } from "@/settings/model-provider-section/ProviderDetailFeedback.js";
+import { ToolModelMarker } from "@/settings/specialized-model-settings/index.js";
 
 export function ModelRowInput({
   model,
@@ -267,6 +268,7 @@ export function ModelRowInput({
             <ModelInputCapabilityBadge />
           ) : null}
         </div>
+        <ToolModelMarker providerId={providerId} modelId={model.modelId} />
         {shouldShowTestButton ? (
           <Button
             type="button"

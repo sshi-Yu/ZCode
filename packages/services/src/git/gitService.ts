@@ -290,6 +290,7 @@ export function createGitService(options?: {
       return await options.commitMessageGenerator.generate({
         workspacePath: params.workspacePath,
         ...(params.workspaceIdentity ? { workspaceIdentity: params.workspaceIdentity } : {}),
+        sessionModel: params.sessionModel,
         ...(params.locale ? { locale: params.locale } : {}),
         branchName: status.summary.branchName,
         files,

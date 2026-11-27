@@ -2,6 +2,21 @@
   "version": 1,
   "fixtures": [
     {
+      "id": "git-commit-message-session-model",
+      "description": "没有小工具模型标记时，Git 提交说明使用当前会话的 DeepSeek 模型。",
+      "match": {
+        "method": "POST",
+        "pathIncludes": "/messages",
+        "bodyIncludes": ["Write exactly one Git commit message", "deepseek-v4-flash"]
+      },
+      "response": {
+        "statusCode": 200,
+        "statusMessage": "OK",
+        "headers": { "content-type": "application/json" },
+        "body": "{\"id\":\"msg_git_session_model\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"deepseek-v4-flash\",\"content\":[{\"type\":\"text\",\"text\":\"test(git): use the session model\"}],\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"usage\":{\"input_tokens\":10,\"output_tokens\":8}}"
+      }
+    },
+    {
       "id": "upstream-tool-action-read-call",
       "description": "Tool action guard case 的首段流式响应：返回一个只读 Read tool_use，用于生成真实 tool call block。",
       "match": {

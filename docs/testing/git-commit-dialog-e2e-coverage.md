@@ -10,7 +10,7 @@
 
 | ID | UI 操作 | 期望行为 | 证据层 |
 | --- | --- | --- | --- |
-| GCD01 | 点击顶部 Git “提交或推送”主按钮 | dirty 仓库打开提交弹窗；按钮右侧不再出现三点下拉 | DOM / dialog |
+| GCD01 | 点击 Git 变更浮层里的“提交或推送” | 原浮层关闭，dirty 仓库打开提交弹窗；转到推送弹窗或关闭弹窗均不会恢复原浮层 | DOM / dialog |
 | GCD02 | 打开提交弹窗 | 显示标准 overlay；弹窗宽度为紧凑 `max-w-md`；顶部显示当前分支和 `+/-` 统计 | DOM / layout |
 | GCD03 | 弹窗内容加载完成 | 自动聚焦提交信息输入框 | activeElement |
 | GCD04 | 点击顶部当前分支 | 展开可切换分支列表；提交弹窗不显示分支 footer 操作 | DOM / branch list |
@@ -62,3 +62,12 @@ GCD-UI-01 增加提交弹窗计算圆角 16px 的断言。共享默认值、业�
 - `pnpm typecheck`、`pnpm --filter @zcode/desktop typecheck:e2e`、`pnpm lint` 通过；Lint 为 41 个已有警告、0 错误。
 - macOS Electron GCD-UI-01：1/1 通过，包含计算圆角 16px 断言；运行 ID：`desktop-e2e-20260904080854303-p50838-b01f152a8e3d50f0`。
 - 三类预览保留 xl 的入口由单测验证，未逐个运行预览 UI；手机 Web、Windows、Linux 尚未进行独立视觉验证。
+
+## 专用工具模型验收
+
+`git-commit-dialog-ui-flow.test.ts` 在供应商模型行标记独立回环文本模型。Git 使用标记模型生成，取消标记后使用当前会话的 DeepSeek 回放模型及档位。环境默认模型与会话模型不同。两次均回填草稿，HEAD 保持原值。
+
+## 变更浮层与对话框交接（2026-11-26）
+
+- 原实现进入提交弹窗后，变更浮层仍可见，新增断言失败。修复后，打开提交弹窗、切换到推送弹窗、关闭推送弹窗三个时点，变更浮层均不再显示。测试不执行真实提交或推送。
+- Windows Electron 两个 Git 用例均通过，证据：`packages/desktop/.e2e-artifacts/git-and-image-settings-review-20261126/summary.md`。

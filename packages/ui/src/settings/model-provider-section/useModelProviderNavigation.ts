@@ -51,6 +51,8 @@ interface UseModelProviderNavigationOptions {
    */
   entitledAccountProviderIds?: ReadonlySet<string>;
   modelProvidersLoading?: boolean;
+  specializedSettingsVisible?: boolean;
+  locale?: string;
   displayOrder?: ProviderOrderView;
   codingPlanEntitlements?: Partial<Record<string, CodingPlanEntitlementState>>;
   providerFamilyDomain?: ProviderFamilyDomain | null;
@@ -73,6 +75,8 @@ export function useModelProviderNavigation({
   modelProviders,
   entitledAccountProviderIds = new Set(),
   modelProvidersLoading = false,
+  specializedSettingsVisible = false,
+  locale,
   displayOrder,
   codingPlanEntitlements = {},
   providerFamilyDomain = null,
@@ -237,6 +241,20 @@ export function useModelProviderNavigation({
       },
     ];
 
+    if (specializedSettingsVisible) {
+      const zh = locale?.startsWith("zh");
+      groups.push({
+        id: "image",
+        title: zh ? "图像" : "Image",
+        items: [
+          {
+            key: "specialized:image",
+            type: "imageSettings",
+            label: zh ? "生图模型" : "Image models",
+          },
+        ],
+      });
+    }
     return groups;
   }, [
     customProviders,
@@ -245,8 +263,9 @@ export function useModelProviderNavigation({
     // 左侧导航分组标题在这个 memo 内格式化。
     // 语言切换时 provider/权益引用可能不变，必须依赖 intl 才能刷新旧 locale 的文案。
     intl,
+    locale,
+    specializedSettingsVisible,
     connectionSelections,
-    pendingConnectionSelections,
     presetProviders,
     modelProviders,
   ]);
@@ -574,8 +593,8 @@ export function connectionSelectionMatchesNavigationItem(
   selection: ProviderFamilyConnectionSelection,
   item: Exclude<ModelProviderNavGroup["items"][number], { type: "codingPlanLoading" }>,
 ): boolean {
-  if (item.type === "custom") return false;
-  const familySpec = resolveModelProviderFamilySpecByProviderId(item.presetId ?? "");
+  if (!("presetId" in item)) return false;
+  const familySpec = resolveModelProviderFamilySpecByProviderId(item.presetId);
   if (familySpec?.id !== family) return false;
   if (selection.kind === "start-plan") {
     return false;

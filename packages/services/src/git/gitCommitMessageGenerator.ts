@@ -24,6 +24,7 @@ export interface GitCommitMessageCurrentModelProvider {
   readCurrentModel(params: {
     workspacePath: string;
     workspaceIdentity?: string;
+    sessionModel?: ZCodeWorkspaceGenerateTextParams["selection"];
   }): Promise<ZCodeWorkspaceGenerateTextParams["selection"] | null>;
 }
 
@@ -60,6 +61,7 @@ export class GitCommitMessageGenerator {
   async generate(params: {
     workspacePath: string;
     workspaceIdentity?: string;
+    sessionModel?: ZCodeWorkspaceGenerateTextParams["selection"];
     branchName: string | null;
     locale?: Locale;
     files: readonly GitFileChange[];
@@ -120,10 +122,12 @@ export class GitCommitMessageGenerator {
   private async resolveCurrentModel(params: {
     workspacePath: string;
     workspaceIdentity?: string;
+    sessionModel?: ZCodeWorkspaceGenerateTextParams["selection"];
   }): Promise<ZCodeWorkspaceGenerateTextParams["selection"]> {
     const currentModel = await this.options.currentModelProvider.readCurrentModel({
       workspacePath: params.workspacePath,
       workspaceIdentity: params.workspaceIdentity,
+      sessionModel: params.sessionModel,
     });
     const modelId = currentModel?.modelId?.trim();
     const providerId = currentModel?.providerId?.trim();

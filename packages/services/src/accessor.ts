@@ -19,6 +19,7 @@ import type { ISystemService } from "./system/system.js";
 import type { ITerminalService } from "./terminal/terminal.js";
 import type { ISettingService } from "./setting/setting.js";
 import type { ICredentialService } from "./credential/credential.js";
+import type { ISpecializedModelSettingsService } from "./specialized-model-settings/contract.js";
 import type { IBroadcastService } from "./broadcast/broadcast.js";
 import type { IZCodeTaskService } from "./session/zcodeTaskService.js";
 import type { IZCodeAgentService } from "./zcode-agent/zcodeAgent.js";
@@ -85,6 +86,7 @@ export interface IServiceAccessor {
   /** Onboarding 完成记录（本地持久化）；旧测试 double / 不支持的 host 可不提供。 */
   readonly onboardingRecordService?: IOnboardingRecordService;
   readonly credentialService: ICredentialService;
+  readonly specializedModelSettingsService?: ISpecializedModelSettingsService;
   readonly broadcastService: IBroadcastService;
   readonly zcodeTaskService: IZCodeTaskService;
   /** 窗口 Host 聚合面；旧 server wire 或测试 double 可暂不提供。 */

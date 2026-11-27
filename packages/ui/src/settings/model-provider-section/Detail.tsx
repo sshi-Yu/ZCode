@@ -637,7 +637,7 @@ export function ModelProviderSectionDetail({
     );
   }
 
-  if (selectedNavItem.type === "codingPlanLoading") {
+  if (selectedNavItem.type === "codingPlanLoading" || !("provider" in selectedNavItem)) {
     // Z.AI plan 判定占位只属于左侧导航，不应进入详情表单渲染路径。
     return null;
   }

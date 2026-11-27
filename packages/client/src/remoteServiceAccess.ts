@@ -10,6 +10,7 @@ import {
   ISettingService,
   IOnboardingRecordService,
   ICredentialService,
+  ISpecializedModelSettingsService,
   IBroadcastService,
   IZCodeTaskService,
   IZCodeAgentService,
@@ -88,6 +89,7 @@ export class RemoteServiceAccess implements IServiceAccessor {
   readonly settingService: ISettingService;
   readonly onboardingRecordService: IOnboardingRecordService;
   readonly credentialService: ICredentialService;
+  readonly specializedModelSettingsService?: ISpecializedModelSettingsService;
   readonly broadcastService: IBroadcastService;
   readonly zcodeTaskService: IZCodeTaskService;
   readonly windowControllerService: IWindowControllerService;
@@ -154,11 +156,17 @@ export class RemoteServiceAccess implements IServiceAccessor {
     options: {
       sourceServerManagementService?: boolean;
       deviceSyncStateService?: boolean;
+      specializedModelSettingsService?: boolean;
       extensionsService?: boolean;
       managedWorktreeService?: boolean;
       windowProjectDirectory?: boolean;
     } = {},
   ) {
+    if (options.specializedModelSettingsService) {
+      this.specializedModelSettingsService = ProxyChannel.toService(
+        channelClient.getChannel(ISpecializedModelSettingsService.channelName),
+      );
+    }
     // 远端工作区的 project 必须保留 Source 语义；只有显式能力才创建完整窗口目录组。
     if (options.windowProjectDirectory) {
       this.windowProjectDirectory = {

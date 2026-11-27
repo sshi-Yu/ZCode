@@ -739,6 +739,27 @@ nodes:
       - "ModelSelection is future Model-creation intent, not a current execution fact. Each model step creates one immutable Active Model and uses that same object for Context current-model identity, model-aware tool projection, request options, and the Adapter request. Guide creates a new model step; execution-scoped Off-Peak and inherited Subagents must not mix their Active Model with Session Selection."
       - "Implemented (Todo 87/99): A target-host selection read accepts original intent and returns a caller-specific effectiveSelection. Account and Personal/Built-in updates recompute temporary results without overwriting intent; UI reads share subscriptions and bounded cancellable read recovery. Composer, Automation, and Bot consume this result at their own commit boundaries. Bound Bot reads the Session original selection, never a second Bot preference; explicit /model commits the complete Session selection immediately. Managed Worker explicit Subagents use the same local facade through dependency injection, including Workflow children; implicit Subagents inherit Parent and execution overrides take priority. Ordinary providers keep identity and account plans follow the current plan. Off-Peak keeps its original provider and Ticket; cross-account remapping is excluded. Frozen runs and history do not remap. No new send-time synchronization barrier or storage migration is introduced. Worker account receivedRevision acknowledges receipt, not Registry application."
 
+  - id: "capability.specialized-model-settings"
+    kind: "capability"
+    label: "Desktop image and utility model settings"
+    aliases: ["图像模型", "生图模型", "小工具模型"]
+    docs:
+      - "docs/superpowers/specs/2026-11-26-model-settings-images-and-tools.md"
+    codeSeeds:
+      - symbol: "ModelProviderSection"
+        file: "packages/ui/src/settings/ModelProviderSection.tsx"
+      - symbol: "ImageModelSettings"
+        file: "packages/ui/src/settings/specialized-model-settings/Details.tsx"
+      - symbol: "ToolModelMarker"
+        file: "packages/ui/src/settings/specialized-model-settings/ToolModelMarker.tsx"
+      - symbol: "createSpecializedModelSettingsOwner"
+        file: "packages/services/src/specialized-model-settings/node.ts"
+      - symbol: "GitActionMenu"
+        file: "packages/ui/src/GitActionMenu.tsx"
+    invariants:
+      - "The desktop local attachment is the only RPC entry. The image settings projection exposes key presence and independent defaults; saving sends no image request."
+      - "A model row can set or clear the single device-local utility model marker. Consumers choose when to use it and provide their own session-model fallback."
+
   - id: "capability.provider-templates"
     kind: "capability"
     label: "Built-in Provider Templates and Personal Provider inheritance"

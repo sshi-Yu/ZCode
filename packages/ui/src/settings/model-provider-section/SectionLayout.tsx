@@ -4,6 +4,7 @@ import type { ModelProviderNavGroup } from "@/settings/model-provider-section/co
 import { ModelProviderSectionNavigation } from "@/settings/model-provider-section/Navigation.js";
 import { ProviderDetailFeedbackBoundary } from "@/settings/model-provider-section/ProviderDetailFeedback.js";
 import { SettingsResourceHeaderActions } from "@/settings/SettingsResourceHeaderActions.js";
+import { ToolModelMarkerProvider } from "@/settings/specialized-model-settings/index.js";
 
 interface ModelProviderSectionLayoutProps {
   description: string;
@@ -19,6 +20,8 @@ interface ModelProviderSectionLayoutProps {
   onSelectNavItem: (item: ModelProviderNavGroup["items"][number]) => void;
   onReorderProviderIds?: (providerIds: string[]) => Promise<void>;
   reorderableProviderIds?: ReadonlySet<string>;
+  showProviderActions?: boolean;
+  utilityModelsRevision?: number;
   children: ReactNode;
 }
 
@@ -43,6 +46,8 @@ export function ModelProviderSectionLayout({
   onSelectNavItem,
   onReorderProviderIds,
   reorderableProviderIds,
+  showProviderActions = true,
+  utilityModelsRevision,
   children,
 }: ModelProviderSectionLayoutProps) {
   const refreshButtonLoading = shouldShowModelProviderRefreshLoading({
@@ -54,14 +59,16 @@ export function ModelProviderSectionLayout({
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
         <p className="text-ui-base leading-6 text-foreground-subtle">{description}</p>
-        <SettingsResourceHeaderActions
-          onRefresh={onRefresh}
-          onNew={onAddProvider}
-          refreshing={refreshButtonLoading}
-          refreshLabel={refreshButtonLoading ? loadingLabel : refreshLabel}
-          newLabel={addProviderLabel}
-          newTestId={TID_MODEL_PROVIDER_ADD_PROVIDER_BUTTON}
-        />
+        {showProviderActions ? (
+          <SettingsResourceHeaderActions
+            onRefresh={onRefresh}
+            onNew={onAddProvider}
+            refreshing={refreshButtonLoading}
+            refreshLabel={refreshButtonLoading ? loadingLabel : refreshLabel}
+            newLabel={addProviderLabel}
+            newTestId={TID_MODEL_PROVIDER_ADD_PROVIDER_BUTTON}
+          />
+        ) : null}
       </div>
 
       <div className="overflow-clip rounded-xl border border-border bg-card">
@@ -87,9 +94,11 @@ export function ModelProviderSectionLayout({
             className="relative min-w-0 p-4 pb-20 sm:p-6 sm:pb-24"
             data-model-provider-detail-scroll="true"
           >
-            <ProviderDetailFeedbackBoundary key={selectedNodeKey ?? "unselected-provider"}>
-              {children}
-            </ProviderDetailFeedbackBoundary>
+            <ToolModelMarkerProvider sourceRevision={utilityModelsRevision}>
+              <ProviderDetailFeedbackBoundary key={selectedNodeKey ?? "unselected-provider"}>
+                {children}
+              </ProviderDetailFeedbackBoundary>
+            </ToolModelMarkerProvider>
           </div>
         </div>
       </div>

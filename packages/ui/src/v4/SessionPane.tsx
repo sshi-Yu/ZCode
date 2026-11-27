@@ -6204,11 +6204,22 @@ export function SessionPane({
     quotaBanner.state.visible &&
     !quotaBanner.dismissed &&
     (!projectedComposerError || quotaBanner.takesOverError || quotaBanner.state.blocksSubmit);
+  const gitSessionModel = useMemo(() => {
+    const config = snapshot?.sessionId === sessionId ? snapshot?.config : undefined;
+    if (!config?.provider.trim() || !config.model.trim()) return undefined;
+    const reasoningLevel = config.thought.trim();
+    return {
+      providerId: config.provider,
+      modelId: config.model,
+      ...(reasoningLevel ? { options: { reasoningLevel } } : {}),
+    };
+  }, [sessionId, snapshot?.config, snapshot?.sessionId]);
   const statusCapsules = !isDraft ? (
     <ConversationStatusPanel
       workspacePath={workspacePath}
       gitCwd={sessionCwd}
       workspaceIdentity={workspaceIdentity}
+      gitSessionModel={gitSessionModel}
       gitSummary={gitSummary}
       gitDirtyFileCount={gitDirtyFileCount}
       gitWorktreeReviewSourceId={gitWorktreeReviewSourceId}
