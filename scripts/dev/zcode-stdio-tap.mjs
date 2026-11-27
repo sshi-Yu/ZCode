@@ -106,17 +106,21 @@ function extractProtocolMeta(message) {
 }
 
 function createRecorder({ childPid, stream, workspaceKey }) {
-  const credentialReplies = new Set();
+  const sensitiveReplies = new Set();
   return function recordLine(direction, raw, bytes) {
     const parsed =
       direction === "agent-stderr" ? { message: null, parseError: null } : tryParseJsonLine(raw);
     const meta = extractProtocolMeta(parsed.message);
     const message = parsed.message;
     const replyKey = `${direction}:${typeof meta.id}:${meta.id}`;
-    if (meta.method === "interaction/requestCredentialCipher") {
+    if (
+      meta.method === "interaction/requestCredentialCipher" ||
+      (meta.method === "workspace/generateText" &&
+        message.params?.querySource === "genimage_features")
+    ) {
       const replyDirection = direction === "agent-to-app" ? "app-to-agent" : "agent-to-app";
-      credentialReplies.add(`${replyDirection}:${typeof meta.id}:${meta.id}`);
-      // 加解密载荷含凭据明文；调试抓包只保留元数据，转发的原始字节不变。
+      sensitiveReplies.add(`${replyDirection}:${typeof meta.id}:${meta.id}`);
+      // 凭据和图像特征载荷包含用户数据，抓包仅保存元数据，转发字节不变。
       parsed.message = {
         jsonrpc: message.jsonrpc,
         id: meta.id,
@@ -124,7 +128,7 @@ function createRecorder({ childPid, stream, workspaceKey }) {
         params: "<redacted>",
       };
       raw = JSON.stringify(parsed.message);
-    } else if (!meta.method && credentialReplies.delete(replyKey)) {
+    } else if (!meta.method && sensitiveReplies.delete(replyKey)) {
       parsed.message = { jsonrpc: message.jsonrpc, id: meta.id, result: "<redacted>" };
       raw = JSON.stringify(parsed.message);
     }

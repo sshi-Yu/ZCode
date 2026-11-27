@@ -73,6 +73,13 @@ import {
 } from "./retry-budget.js";
 import { isNoRedispatchRequest } from "./redispatch-policy.js";
 
+const IMAGE_FEATURE_QUERY_SOURCE = "genimage_features";
+const IMAGE_FEATURE_FAILURE_MESSAGE = "Image feature request failed.";
+const IMAGE_FEATURE_CANCELLED_MESSAGE = "Image feature request was cancelled.";
+const IMAGE_FEATURE_TIMEOUT_MESSAGE = "Image feature request timed out.";
+const MIN_HTTP_STATUS_CODE = 100;
+const MAX_HTTP_STATUS_CODE = 599;
+
 export async function runGenerateText(input: {
   debugDir?: string;
   env: EnvRecord;
@@ -99,8 +106,12 @@ export async function runGenerateText(input: {
     resolved: input.resolved,
     transport: ModelTransportKindValue.Http,
   });
+  const isolateImageFeature = baseStatusContext.querySource === IMAGE_FEATURE_QUERY_SOURCE;
+  const diagnosticsLogger = isolateImageFeature ? undefined : input.logger;
   const recordModelIO =
-    input.request.metadata?.skipTranscript !== true && shouldRecordModelIO(input.env);
+    !isolateImageFeature &&
+    input.request.metadata?.skipTranscript !== true &&
+    shouldRecordModelIO(input.env);
   const isDev = isDevelopmentModelIOEnv(input.env);
   let requestMessages = input.request.messages;
   let signatureRepairAttempted = false;
@@ -148,7 +159,11 @@ export async function runGenerateText(input: {
         ...admissionWaitPublishers(statusContext, attempt, statusPublishOptions(input)),
       });
     } catch (admitError) {
-      const admitFailure = classifyModelFailure(admitError, input.request.abortSignal);
+      const { error, failure: admitFailure } = isolateGenerateFailure(
+        isolateImageFeature,
+        admitError,
+        classifyModelFailure(admitError, input.request.abortSignal),
+      );
       await publishModelStatus(
         {
           ...statusContext,
@@ -159,16 +174,16 @@ export async function runGenerateText(input: {
           requestHeaders,
           retryable: false,
           statusCode: admitFailure.statusCode,
-          ...modelFailureStatusFields(admitError, admitFailure, "connect"),
+          ...modelFailureStatusFields(error, admitFailure, "connect"),
           timestamp: new Date().toISOString(),
           type: "model_request_failed",
         },
         {
           ...statusPublishOptions(input),
-          failureError: unwrapRetryError(admitError),
+          failureError: unwrapRetryError(error),
         },
       );
-      throw toAdapterError(admitError, admitFailure, statusContext, attempt, {
+      throw toAdapterError(error, admitFailure, statusContext, attempt, {
         errorPhase: "connect",
       });
     }
@@ -193,7 +208,7 @@ export async function runGenerateText(input: {
         resolved,
         statusContext,
       });
-      requestHeaders = sanitizeModelNetworkHeaders(options.headers);
+      requestHeaders = isolateImageFeature ? {} : sanitizeModelNetworkHeaders(options.headers);
       requestHeaderCount = Object.keys(requestHeaders).length;
       await publishModelStatus(
         {
@@ -217,9 +232,9 @@ export async function runGenerateText(input: {
       // 只有 generateText 调用返回 pending promise 后才进入 response 归因边界，避免把本地 setup 记成 provider。
       requestInvocationCompleted = true;
       const result = await waitForGenerateTextOrAbort(pendingResult, input.request.abortSignal);
-      const responseHeaders = sanitizeModelNetworkHeaders(
-        getGenerateTextResultMetadata(result)?.response?.headers,
-      );
+      const responseHeaders = isolateImageFeature
+        ? {}
+        : sanitizeModelNetworkHeaders(getGenerateTextResultMetadata(result)?.response?.headers);
       const providerBusinessFinishError = detectProviderBusinessFinishError({
         providerId: String(resolved.providerId),
         providerKind: resolved.providerKind,
@@ -235,7 +250,7 @@ export async function runGenerateText(input: {
         throw providerBusinessFinishError;
       }
       const usage = normalizeUsage(result.totalUsage ?? result.usage);
-      const toolCalls = normalizeToolCalls(result, input.logger);
+      const toolCalls = normalizeToolCalls(result, diagnosticsLogger);
       const toolResults = normalizeToolResults(result, toolCalls);
       const sources = normalizeSources(result);
       const text = input.request.responseJsonSchema
@@ -285,7 +300,7 @@ export async function runGenerateText(input: {
         logGenerateTextDiagnostics({
           attempt,
           completedAt,
-          logger: input.logger,
+          logger: diagnosticsLogger,
           result,
           startedAt,
           statusContext,
@@ -331,7 +346,7 @@ export async function runGenerateText(input: {
       logGenerateTextDiagnostics({
         attempt,
         completedAt,
-        logger: input.logger,
+        logger: diagnosticsLogger,
         result,
         statusContext,
         startedAt,
@@ -378,8 +393,11 @@ export async function runGenerateText(input: {
       if (
         error instanceof ModelProtocolError &&
         error.code === ModelErrorCode.ModelRequestAuthMissing
-      )
+      ) {
+        if (isolateImageFeature)
+          throw new ModelProtocolError(error.code, IMAGE_FEATURE_FAILURE_MESSAGE);
         throw error;
+      }
       const completedAt = Date.now();
       const classified = classifyModelFailure(error, input.request.abortSignal);
       if (error instanceof RuntimeHeadersRefreshError) {
@@ -410,13 +428,14 @@ export async function runGenerateText(input: {
         failure,
         providerCode,
       );
-      const responseHeaders = sanitizeModelNetworkHeaders(
-        getResponseHeaders(unwrapRetryError(error)),
-      );
+      const responseHeaders = isolateImageFeature
+        ? {}
+        : sanitizeModelNetworkHeaders(getResponseHeaders(unwrapRetryError(error)));
       // NextStep 的单次请求不允许通过历史修复追加一次物理调用。
-      const repairedMessages = !noRedispatch && !signatureRepairAttempted
-        ? repairReasoningHistoryAfterRejection(requestMessages, error, resolved.providerKind)
-        : undefined;
+      const repairedMessages =
+        !noRedispatch && !signatureRepairAttempted
+          ? repairReasoningHistoryAfterRejection(requestMessages, error, resolved.providerKind)
+          : undefined;
       const retryWithRepairedHistory = repairedMessages !== undefined;
       if (repairedMessages) {
         // 签名和加密推理只对生成它的上游有效。明确收到对应的 400 时，
@@ -446,6 +465,7 @@ export async function runGenerateText(input: {
         };
       const canRetry =
         !noRedispatch && (retryWithAuth || retryWithRepairedHistory || canRetryWithFailurePolicy);
+      const reported = isolateGenerateFailure(isolateImageFeature, error, failure);
 
       if (options) {
         recordGenerateTextDebug({
@@ -468,22 +488,28 @@ export async function runGenerateText(input: {
           ...statusContext,
           attempt,
           durationMs: completedAt - startedAt,
-          message: failure.message,
+          message: reported.failure.message,
           reason: failure.reason,
           requestHeaderCount,
           requestHeaders,
           responseHeaderCount: Object.keys(responseHeaders).length,
           responseHeaders,
           retryable: canRetry,
-          statusCode: failure.statusCode,
-          ...modelFailureStatusFields(error, failure, options ? "response" : "prepare"),
+          statusCode: reported.failure.statusCode,
+          ...modelFailureStatusFields(
+            reported.error,
+            reported.failure,
+            options ? "response" : "prepare",
+          ),
           timestamp: new Date(completedAt).toISOString(),
           type: "model_request_failed",
-          ...(error instanceof AiSdkModelAdapterError && error.usage ? { usage: error.usage } : {}),
+          ...(reported.error instanceof AiSdkModelAdapterError && reported.error.usage
+            ? { usage: reported.error.usage }
+            : {}),
         },
         {
           ...statusPublishOptions(input, admission),
-          failureError: unwrapRetryError(error),
+          failureError: unwrapRetryError(reported.error),
         },
       );
 
@@ -491,14 +517,14 @@ export async function runGenerateText(input: {
         logRetryDelayDecision({
           attempt,
           canRetry,
-          failure,
+          failure: reported.failure,
           logger: input.logger,
           responseHeaders,
           statusContext,
         });
-        throw toAdapterError(error, failure, statusContext, attempt, {
+        throw toAdapterError(reported.error, reported.failure, statusContext, attempt, {
           errorPhase: requestInvocationCompleted ? "response" : "prepare",
-          unrecognizedCodeStreak,
+          ...(isolateImageFeature ? {} : { unrecognizedCodeStreak }),
         });
       }
 
@@ -508,7 +534,7 @@ export async function runGenerateText(input: {
           statusContext,
           attempt,
           0,
-          { ...failure, retryReason: ModelRetryReason.AuthRefresh },
+          { ...reported.failure, retryReason: ModelRetryReason.AuthRefresh },
           requestHeaders,
           responseHeaders,
         );
@@ -516,7 +542,7 @@ export async function runGenerateText(input: {
       }
 
       if (retryWithRepairedHistory) {
-        input.logger?.warn("Retrying model request after reasoning rejection", {
+        diagnosticsLogger?.warn("Retrying model request after reasoning rejection", {
           attempt,
           event: "model.reasoning_signature_repair.retry",
           maxAttempts: statusContext.maxAttempts,
@@ -534,7 +560,7 @@ export async function runGenerateText(input: {
           attempt,
           0,
           {
-            ...failure,
+            ...reported.failure,
             retryReason: ModelRetryReason.ReasoningSignatureRepair,
           },
           requestHeaders,
@@ -560,7 +586,7 @@ export async function runGenerateText(input: {
         backoffMs,
         canRetry,
         delayMs,
-        failure,
+        failure: reported.failure,
         logger: input.logger,
         responseHeaders,
         statusContext,
@@ -571,7 +597,7 @@ export async function runGenerateText(input: {
         statusContext,
         attempt,
         delayMs,
-        failure,
+        reported.failure,
         requestHeaders,
         responseHeaders,
         admission,
@@ -582,10 +608,14 @@ export async function runGenerateText(input: {
       try {
         await sleep(delayMs, input.request.abortSignal);
       } catch (sleepError) {
-        const sleepFailure = classifyModelFailure(sleepError, input.request.abortSignal);
-        const sleepResponseHeaders = sanitizeModelNetworkHeaders(
-          getResponseHeaders(unwrapRetryError(sleepError)),
+        const { error, failure: sleepFailure } = isolateGenerateFailure(
+          isolateImageFeature,
+          sleepError,
+          classifyModelFailure(sleepError, input.request.abortSignal),
         );
+        const sleepResponseHeaders = isolateImageFeature
+          ? {}
+          : sanitizeModelNetworkHeaders(getResponseHeaders(unwrapRetryError(error)));
         await publishModelStatus(
           {
             ...statusContext,
@@ -598,17 +628,17 @@ export async function runGenerateText(input: {
             responseHeaders: sleepResponseHeaders,
             retryable: false,
             statusCode: sleepFailure.statusCode,
-            ...modelFailureStatusFields(sleepError, sleepFailure, "connect"),
+            ...modelFailureStatusFields(error, sleepFailure, "connect"),
             timestamp: new Date().toISOString(),
             type: "model_request_failed",
           },
           {
             // 退避期间票据已归还：这次取消不属于任何一次尝试，不转投票据。
             ...statusPublishOptions(input),
-            failureError: unwrapRetryError(sleepError),
+            failureError: unwrapRetryError(error),
           },
         );
-        throw toAdapterError(sleepError, sleepFailure, statusContext, attempt, {
+        throw toAdapterError(error, sleepFailure, statusContext, attempt, {
           errorPhase: "connect",
         });
       }
@@ -626,6 +656,34 @@ export async function runGenerateText(input: {
     "Model request failed before an attempt could complete",
     { context: { requestId: baseStatusContext.requestId } },
   );
+}
+
+function isolateGenerateFailure(
+  isolateImageFeature: boolean,
+  error: unknown,
+  failure: ClassifiedModelFailure,
+): { error: unknown; failure: ClassifiedModelFailure } {
+  if (!isolateImageFeature) return { error, failure };
+  // 供应商可能在消息、响应头和嵌套异常中回显图像。原始异常只用于内部分类和重试，
+  // 对外丢弃整个对象，让遥测从固定文案与结构化分类重建失败记录。
+  const message =
+    failure.code === ModelErrorCode.ModelRequestCancelled
+      ? IMAGE_FEATURE_CANCELLED_MESSAGE
+      : failure.code === ModelErrorCode.ModelRequestTimeout
+        ? IMAGE_FEATURE_TIMEOUT_MESSAGE
+        : IMAGE_FEATURE_FAILURE_MESSAGE;
+  const { statusCode } = failure;
+  const httpStatus =
+    statusCode !== undefined &&
+    Number.isInteger(statusCode) &&
+    statusCode >= MIN_HTTP_STATUS_CODE &&
+    statusCode <= MAX_HTTP_STATUS_CODE
+      ? statusCode
+      : undefined;
+  return {
+    error: undefined,
+    failure: { ...failure, message, retryAfterMs: undefined, statusCode: httpStatus },
+  };
 }
 
 function serializeStructuredOutput(result: unknown): string {
@@ -661,12 +719,7 @@ function waitForGenerateTextOrAbort<T>(
       );
     };
 
-    if (abortSignal.aborted) {
-      onAbort();
-      return;
-    }
-
-    abortSignal.addEventListener("abort", onAbort, { once: true });
+    // SDK 调用返回时信号可能已取消。先接住底层 Promise，避免迟到的供应商拒绝成为未处理异常。
     pending.then(
       (value) => {
         cleanup();
@@ -677,6 +730,11 @@ function waitForGenerateTextOrAbort<T>(
         reject(error);
       },
     );
+    if (abortSignal.aborted) {
+      onAbort();
+      return;
+    }
+    abortSignal.addEventListener("abort", onAbort, { once: true });
   });
 }
 

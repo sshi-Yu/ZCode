@@ -1067,6 +1067,126 @@ describe("AiSdkModelAdapter", () => {
     }
   });
 
+  it.each(["genimage_features", "project_memory_dream"])(
+    "isolates image feature provider diagnostics without changing skipTranscript for %s",
+    async (querySource) => {
+      const image = "aW1hZ2UtZmVhdHVyZS1zZW50aW5lbA==";
+      const rawError = new ProviderBusinessError({
+        providerId: "test",
+        providerKind: "openai-compatible",
+        providerMessage: `Rejected image ${image}`,
+        providerCode: image,
+        providerRequestId: image,
+        responseBodySummary: { echoedImage: image },
+        responseHeaders: { "retry-after": image, "x-request-id": image },
+        statusCode: 400,
+      });
+      const requestPublish = vi.fn();
+      const telemetry = { publish: vi.fn(), publishFailure: vi.fn() };
+      const logs: CapturedLog[] = [];
+      const generateText = vi.fn<AiSdkModelRuntime["generateText"]>().mockRejectedValue(rawError);
+      const adapter = new AiSdkModelAdapter({
+        env: { ZCODE_RUNTIME_ENV: "test" },
+        logger: capturingLogger(logs),
+        registry: registry(),
+        runtime: { generateText, streamText: vi.fn() },
+        statusSink: telemetry,
+      });
+
+      const error = await executeAdapterGenerateText(adapter, {
+        providerId: "test" as never,
+        modelId: "model-a" as never,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "image", mediaType: "image/png", dataUrl: `data:image/png;base64,${image}` },
+            ],
+          },
+        ],
+        metadata: { querySource, skipTranscript: true },
+        statusSink: { publish: requestPublish },
+      }).catch((failure: unknown) => failure);
+
+      expect(generateText).toHaveBeenCalledOnce();
+      if (querySource === "project_memory_dream") {
+        expect(requestPublish).toHaveBeenCalledWith(
+          expect.objectContaining({ providerErrorMessage: rawError.message }),
+        );
+        expect(telemetry.publishFailure).toHaveBeenCalledWith(expect.any(Object), rawError);
+        expect(error).toMatchObject({ cause: rawError });
+        return;
+      }
+      expect(
+        JSON.stringify([requestPublish.mock.calls, telemetry.publish.mock.calls, logs]).includes(
+          image,
+        ),
+      ).toBe(false);
+      expect(telemetry.publishFailure).not.toHaveBeenCalled();
+      expect(telemetry.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: "Image feature request failed.",
+          statusCode: 400,
+          type: "model_request_failed",
+        }),
+      );
+      expect(error).toMatchObject({ message: "Image feature request failed.", cause: undefined });
+      expect(JSON.stringify(error)).not.toContain(image);
+    },
+  );
+
+  it("drops image feature failure diagnostics when cancellation races SDK rejection", async () => {
+    const abort = new AbortController();
+    const image = "aW1hZ2UtY2FuY2VsLXNlbnRpbmVs";
+    const rawError = new Error(`Provider echoed ${image}`);
+    let attempts = 0;
+    const generateText: AiSdkModelRuntime["generateText"] = () => {
+      attempts += 1;
+      abort.abort(new Error(`Cancelled while sending ${image}`));
+      return Promise.reject(rawError);
+    };
+    const telemetry = { publish: vi.fn(), publishFailure: vi.fn() };
+    const adapter = new AiSdkModelAdapter({
+      env: { ZCODE_RUNTIME_ENV: "test" },
+      registry: registry(),
+      runtime: { generateText, streamText: vi.fn() },
+      statusSink: telemetry,
+    });
+
+    await expect(
+      executeAdapterGenerateText(adapter, {
+        abortSignal: abort.signal,
+        providerId: "test" as never,
+        modelId: "model-a" as never,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "image", mediaType: "image/png", dataUrl: `data:image/png;base64,${image}` },
+            ],
+          },
+        ],
+        metadata: { querySource: "genimage_features" },
+      }),
+    ).rejects.toMatchObject({
+      cause: undefined,
+      code: ModelErrorCode.ModelRequestCancelled,
+      message: "Image feature request was cancelled.",
+    });
+    expect(attempts).toBe(1);
+    expect(telemetry.publishFailure).not.toHaveBeenCalled();
+    expect(telemetry.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        errorCode: ModelErrorCode.ModelRequestCancelled,
+        reason: ModelFailureReason.Cancelled,
+        retryable: false,
+        type: "model_request_failed",
+      }),
+    );
+    expect(JSON.stringify(telemetry.publish.mock.calls)).not.toContain(image);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  });
+
   it("reuses normalized native-null tool input in generateText model-io", async () => {
     const debugDir = await mkdtemp(join(tmpdir(), "zcode-model-io-generate-null-tool-"));
     const logs: CapturedLog[] = [];
