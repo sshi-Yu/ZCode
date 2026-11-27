@@ -119,6 +119,7 @@ export {
   type ProcessResourceSampler,
 } from "./process/processResourceSampler.js";
 export { createMediaPreviewService } from "./media-preview/mediaPreview.js";
+export { createGenImageService } from "./genimage/node.js";
 export { createContentBundleCache } from "#src/cloud-content/contentBundleCache.js";
 export type { ContentBundle } from "#src/cloud-content/contentBundleCache.js";
 export type { CreateFileServiceOptions } from "./file/fileService.js";

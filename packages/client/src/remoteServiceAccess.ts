@@ -11,6 +11,7 @@ import {
   IOnboardingRecordService,
   ICredentialService,
   ISpecializedModelSettingsService,
+  IGenImageService,
   IBroadcastService,
   IZCodeTaskService,
   IZCodeAgentService,
@@ -90,6 +91,7 @@ export class RemoteServiceAccess implements IServiceAccessor {
   readonly onboardingRecordService: IOnboardingRecordService;
   readonly credentialService: ICredentialService;
   readonly specializedModelSettingsService?: ISpecializedModelSettingsService;
+  readonly genImageService?: IGenImageService;
   readonly broadcastService: IBroadcastService;
   readonly zcodeTaskService: IZCodeTaskService;
   readonly windowControllerService: IWindowControllerService;
@@ -157,6 +159,7 @@ export class RemoteServiceAccess implements IServiceAccessor {
       sourceServerManagementService?: boolean;
       deviceSyncStateService?: boolean;
       specializedModelSettingsService?: boolean;
+      genImageService?: boolean;
       extensionsService?: boolean;
       managedWorktreeService?: boolean;
       windowProjectDirectory?: boolean;
@@ -165,6 +168,11 @@ export class RemoteServiceAccess implements IServiceAccessor {
     if (options.specializedModelSettingsService) {
       this.specializedModelSettingsService = ProxyChannel.toService(
         channelClient.getChannel(ISpecializedModelSettingsService.channelName),
+      );
+    }
+    if (options.genImageService) {
+      this.genImageService = ProxyChannel.toService(
+        channelClient.getChannel(IGenImageService.channelName),
       );
     }
     // 远端工作区的 project 必须保留 Source 语义；只有显式能力才创建完整窗口目录组。

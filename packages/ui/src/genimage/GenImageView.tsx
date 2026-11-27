@@ -1,13 +1,24 @@
-import { GitFork, History, Info, Maximize, Minus, Plus, SlidersHorizontal } from "lucide-react";
+import {
+  GitFork,
+  HardDrive,
+  History,
+  Info,
+  Maximize,
+  Minus,
+  Plus,
+  SlidersHorizontal,
+} from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent } from "react";
 import { Button } from "@/components/ui/button.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import type { GenImageViewProps } from "./contract.js";
-import { FixtureArtwork, initialNodes, MAX_NODES, NODE_HEIGHT, NODE_WIDTH } from "./fixture.js";
+import type { GenImageViewProps, IGenImageService } from "./contract.js";
+import { initialNodes, MAX_NODES, NODE_HEIGHT, NODE_WIDTH } from "./fixture.js";
 import type { ImageNode, Ratio } from "./fixture.js";
+import { GenImageArtwork, nodeLabel, type CanvasNode } from "./GenImageArtwork.js";
 import { FixtureBadge, GenImagePanel, type PanelKind } from "./GenImagePanel.js";
 import { genImageText } from "./text.js";
+import { useGenImageLocal, useGenImageService } from "./useGenImageLocal.js";
 import "./genimage.css";
 
 interface Camera {
@@ -26,16 +37,18 @@ interface Drag {
   clientY: number;
   x: number;
   y: number;
-  id?: string;
+  node?: CanvasNode;
+  scale: number;
   moved: boolean;
 }
 
 function fitCamera(
-  nodes: readonly ImageNode[],
+  nodes: readonly CanvasNode[],
   width: number,
   height: number,
   initial: boolean,
 ): Camera {
+  if (!nodes.length) return { x: width / 2, y: height / 2, scale: 1 };
   const left = Math.min(...nodes.map((node) => node.x));
   const right = Math.max(...nodes.map((node) => node.x + NODE_WIDTH));
   const top = Math.min(...nodes.map((node) => node.y));
@@ -59,7 +72,7 @@ function zoomCamera(camera: Camera, factor: number, x: number, y: number): Camer
   return { scale, x: x - (x - camera.x) * multiplier, y: y - (y - camera.y) * multiplier };
 }
 
-function edgePath(parent: ImageNode, child: ImageNode) {
+function edgePath(parent: CanvasNode, child: CanvasNode) {
   const rightward = child.x >= parent.x;
   const startX = parent.x + (rightward ? NODE_WIDTH : 0);
   const endX = child.x + (rightward ? -4 : NODE_WIDTH + 4);
@@ -69,25 +82,78 @@ function edgePath(parent: ImageNode, child: ImageNode) {
   return `M${startX} ${startY} C${startX + bend} ${startY} ${endX - bend} ${endY} ${endX} ${endY}`;
 }
 
-export function GenImageView({ windowControls, sidebarCollapsed }: GenImageViewProps) {
+function nextPosition(nodes: readonly CanvasNode[], source?: CanvasNode) {
+  const x = source
+    ? source.x + 360
+    : nodes.length
+      ? Math.max(...nodes.map((node) => node.x)) + 360
+      : 0;
+  let y = source?.y ?? 184;
+  while (
+    nodes.some(
+      (node) => Math.abs(node.x - x) < NODE_WIDTH + 16 && Math.abs(node.y - y) < NODE_HEIGHT + 16,
+    )
+  )
+    y += NODE_HEIGHT + 48;
+  return { x, y };
+}
+
+export function GenImageView(props: GenImageViewProps) {
+  const service = useGenImageService();
+  return <GenImageMode key={props.localScope} {...props} service={service} />;
+}
+
+function GenImageMode({ service, ...props }: GenImageViewProps & { service?: IGenImageService }) {
+  const [localMode, setLocalMode] = useState(false);
+  const available = service && props.localScope !== undefined;
+  const localService = localMode && available ? service : undefined;
+  return (
+    <GenImageCanvas
+      key={localService ? "local" : "fixture"}
+      {...props}
+      localService={localService}
+      onToggleMode={available ? () => setLocalMode((active) => !active) : undefined}
+    />
+  );
+}
+
+function GenImageCanvas({
+  windowControls,
+  sidebarCollapsed,
+  localService,
+  localScope = "",
+  localScopeName,
+  onToggleMode,
+}: GenImageViewProps & { localService?: IGenImageService; onToggleMode?: () => void }) {
   const { locale } = useZCodeIntl();
   const text = genImageText(locale);
-  const [nodes, setNodes] = useState<readonly ImageNode[]>(initialNodes);
+  const local = useGenImageLocal(localService, localScope);
+  const localMode = !!localService;
+  const ready = !localMode || local.ready;
+  const [fixtures, setFixtures] = useState<readonly ImageNode[]>(initialNodes);
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, scale: 1 });
-  const [selectedId, setSelectedId] = useState<string | null>("B");
+  const [selectedId, setSelectedId] = useState<string | null>(localMode ? null : "B");
   const [panel, setPanel] = useState<Panel | null>(null);
   const [prompt, setPrompt] = useState("");
   const [ratio, setRatio] = useState<Ratio>("4:3");
   const [dragging, setDragging] = useState(false);
+  const [dragPosition, setDragPosition] = useState<{ id: string; x: number; y: number }>();
   const [announcement, setAnnouncement] = useState("");
   const viewport = useRef<HTMLDivElement>(null);
+  const currentPanel = useRef<Panel | null>(null);
   const newButton = useRef<HTMLButtonElement>(null);
   const helpButton = useRef<HTMLButtonElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const promptInput = useRef<HTMLTextAreaElement>(null);
   const drag = useRef<Drag | null>(null);
+  const framed = useRef(false);
   const panelId = useId();
   const arrowId = useId();
+  const nodes: readonly CanvasNode[] = localMode
+    ? local.nodes.map((node) =>
+        node.id === dragPosition?.id ? { ...node, x: dragPosition.x, y: dragPosition.y } : node,
+      )
+    : fixtures;
   const selected = nodes.find((node) => node.id === selectedId);
   const source = nodes.find((node) => node.id === panel?.source);
   const nodeIndex = new Map(nodes.map((node) => [node.id, node]));
@@ -95,9 +161,15 @@ export function GenImageView({ windowControls, sidebarCollapsed }: GenImageViewP
   useLayoutEffect(() => {
     const element = viewport.current;
     if (!element) return;
-    setCamera(fitCamera(initialNodes, element.clientWidth, element.clientHeight, true));
     element.focus({ preventScroll: true });
   }, []);
+
+  useLayoutEffect(() => {
+    const element = viewport.current;
+    if (!element || framed.current || !ready) return;
+    framed.current = true;
+    setCamera(fitCamera(nodes, element.clientWidth, element.clientHeight, !localMode));
+  }, [localMode, nodes, ready]);
 
   useEffect(() => {
     if (panel)
@@ -138,37 +210,57 @@ export function GenImageView({ windowControls, sidebarCollapsed }: GenImageViewP
   }
 
   function findNodeElement(id: string) {
-    return viewport.current?.querySelector<HTMLElement>(`[data-genimage-node="${id}"]`);
+    return viewport.current?.querySelector<HTMLElement>(`[data-genimage-node="${CSS.escape(id)}"]`);
   }
 
-  function locate(id: string, close = false, focus = false) {
-    const node = nodeIndex.get(id);
+  function centerNode(node: CanvasNode, panelOpen: boolean) {
     const element = viewport.current;
-    if (!node || !element) return;
+    if (!element) return;
     const { clientWidth, clientHeight } = element;
-    const panelOpen = panel && !close;
     const wide = clientWidth >= 640;
     const visibleWidth = panelOpen && wide ? clientWidth - 370 : clientWidth;
     const visibleHeight = panelOpen && !wide ? clientHeight * 0.55 : clientHeight;
-    setSelectedId(id);
-    if (close) setPanel(null);
     setCamera((previous) => ({
       ...previous,
       x: visibleWidth / 2 - (node.x + NODE_WIDTH / 2) * previous.scale,
       y: visibleHeight / 2 - (node.y + NODE_HEIGHT / 2) * previous.scale,
     }));
+  }
+
+  function locate(id: string, close = false, focus = false) {
+    const node = nodeIndex.get(id);
+    if (!node) return;
+    setSelectedId(id);
+    if (close) changePanel(null);
+    centerNode(node, !!panel && !close);
     if (close || focus) findNodeElement(id)?.focus({ preventScroll: true });
   }
 
+  function changePanel(next: Panel | null) {
+    currentPanel.current = next;
+    setPanel(next);
+  }
+
   function closePanel() {
-    setPanel(null);
+    changePanel(null);
     if (panel?.trigger?.isConnected) panel.trigger.focus({ preventScroll: true });
     else if (selectedId) findNodeElement(selectedId)?.focus({ preventScroll: true });
   }
 
   function togglePanel(kind: PanelKind, trigger: HTMLElement | null) {
     if (panel?.kind === kind) closePanel();
-    else setPanel({ kind, trigger });
+    else changePanel({ kind, trigger });
+  }
+
+  function commitPosition(node: CanvasNode, x: number, y: number) {
+    if (node.x === x && node.y === y) return;
+    if ("version" in node) {
+      local.moveNode(node, { x, y });
+      return;
+    }
+    setFixtures((previous) =>
+      previous.map((fixture) => (fixture.id === node.id ? { ...fixture, x, y } : fixture)),
+    );
   }
 
   function beginDrag(event: PointerEvent<HTMLDivElement>) {
@@ -188,7 +280,8 @@ export function GenImageView({ windowControls, sidebarCollapsed }: GenImageViewP
       clientY: event.clientY,
       x: node?.x ?? camera.x,
       y: node?.y ?? camera.y,
-      id: node?.id,
+      node,
+      scale: camera.scale,
       moved: false,
     };
     if (nodeElement) nodeElement.focus({ preventScroll: true });
@@ -204,14 +297,11 @@ export function GenImageView({ windowControls, sidebarCollapsed }: GenImageViewP
     const dy = event.clientY - current.clientY;
     if (Math.abs(dx) + Math.abs(dy) > 4) current.moved = true;
     if (!current.moved) return;
-    if (current.id) {
-      setNodes((previous) =>
-        previous.map((node) =>
-          node.id === current.id
-            ? { ...node, x: current.x + dx / camera.scale, y: current.y + dy / camera.scale }
-            : node,
-        ),
-      );
+    if (current.node) {
+      const x = current.x + dx / current.scale;
+      const y = current.y + dy / current.scale;
+      if (localMode) setDragPosition({ id: current.node.id, x, y });
+      else commitPosition(nodeIndex.get(current.node.id) ?? current.node, x, y);
     } else setCamera((previous) => ({ ...previous, x: current.x + dx, y: current.y + dy }));
   }
 
@@ -220,46 +310,88 @@ export function GenImageView({ windowControls, sidebarCollapsed }: GenImageViewP
     if (!current || current.pointer !== event.pointerId) return;
     drag.current = null;
     setDragging(false);
-    if (!current.id && !current.moved && event.type === "pointerup" && panel?.kind !== "details")
+    setDragPosition(undefined);
+    if (current.node && localMode && current.moved && event.type === "pointerup") {
+      commitPosition(
+        current.node,
+        current.x + (event.clientX - current.clientX) / current.scale,
+        current.y + (event.clientY - current.clientY) / current.scale,
+      );
+    }
+    if (!current.node && !current.moved && event.type === "pointerup" && panel?.kind !== "details")
       setSelectedId(null);
     if (event.currentTarget.hasPointerCapture(event.pointerId))
       event.currentTarget.releasePointerCapture(event.pointerId);
   }
 
-  function submit() {
+  async function submit() {
     const description = prompt.trim();
-    if (!description || nodes.length >= MAX_NODES) return;
-    const id = String.fromCharCode(65 + nodes.length);
-    const x = source ? source.x + 360 : Math.max(...nodes.map((node) => node.x)) + 360;
-    let y = source?.y ?? 184;
-    while (
-      nodes.some(
-        (node) => Math.abs(node.x - x) < NODE_WIDTH + 16 && Math.abs(node.y - y) < NODE_HEIGHT + 16,
-      )
-    )
-      y += NODE_HEIGHT + 48;
-    setNodes([
-      ...nodes,
+    if (!description || !ready || panel?.kind !== "create" || (panel.source && !source)) return;
+    if (localMode) {
+      const first = nodes.length === 0;
+      const element = viewport.current;
+      if (!element) return;
+      const position = first
+        ? {
+            x: (element.clientWidth / 2 - camera.x) / camera.scale - NODE_WIDTH / 2,
+            y: (element.clientHeight / 2 - camera.y) / camera.scale - NODE_HEIGHT / 2,
+          }
+        : nextPosition(nodes, source);
+      const node = await local.generate({
+        ...position,
+        sourceId: source?.id ?? null,
+        prompt: description,
+        ratio,
+      });
+      if (!node || !viewport.current) return;
+      setAnnouncement(text.added(nodeLabel(node)));
+      if (currentPanel.current !== panel) return;
+      const formHadFocus = promptInput.current?.form?.contains(document.activeElement);
+      setPrompt("");
+      changePanel(null);
+      if (first) {
+        const { clientWidth, clientHeight } = element;
+        setCamera((previous) => {
+          const left = previous.x + node.x * previous.scale;
+          const top = previous.y + node.y * previous.scale;
+          const right = left + NODE_WIDTH * previous.scale;
+          const bottom = top + NODE_HEIGHT * previous.scale;
+          if (left >= 0 && top >= 0 && right <= clientWidth && bottom <= clientHeight) {
+            return previous;
+          }
+          return fitCamera([node], clientWidth, clientHeight, false);
+        });
+      }
+      if (formHadFocus) {
+        if (panel.trigger?.isConnected) panel.trigger.focus({ preventScroll: true });
+        else viewport.current.focus({ preventScroll: true });
+      }
+      return;
+    }
+    if (fixtures.length >= MAX_NODES) return;
+    const id = String.fromCharCode(65 + fixtures.length);
+    setFixtures([
+      ...fixtures,
       {
+        ...nextPosition(nodes, source),
         id,
-        x,
-        y,
         ratio,
         source: source?.id ?? null,
         prompt: description,
         title: source ? text.deriveTitle : text.newTitle,
-        artwork: (source ? source.artwork + 1 : nodes.length) % 3,
+        artwork: (source && "artwork" in source ? source.artwork + 1 : fixtures.length) % 3,
       },
     ]);
     if (panel?.trigger?.isConnected && !source) panel.trigger.focus({ preventScroll: true });
     else viewport.current?.focus({ preventScroll: true });
     setSelectedId(id);
-    setPanel(null);
+    changePanel(null);
     setAnnouncement(text.added(id));
   }
 
   function keyDown(event: KeyboardEvent<HTMLElement>) {
     const { key, target } = event;
+    if (!(target instanceof Node) || !event.currentTarget.contains(target)) return;
     if (key === "Escape" && panel) {
       event.preventDefault();
       event.stopPropagation();
@@ -276,22 +408,14 @@ export function GenImageView({ windowControls, sidebarCollapsed }: GenImageViewP
     if (key === "+" || key === "=") zoom(1.2);
     else if (key === "-") zoom(1 / 1.2);
     else if (key === "0" || key === "Home") fit();
-    else if (key.toLowerCase() === "n") setPanel({ kind: "create", trigger: newButton.current });
+    else if (key.toLowerCase() === "n" && ready && !local.generating)
+      changePanel({ kind: "create", trigger: newButton.current });
     else if (key === "?") togglePanel("help", helpButton.current);
-    else if (
-      selected &&
-      key.startsWith("Arrow") &&
-      target instanceof Node &&
-      viewport.current?.contains(target)
-    ) {
+    else if (selected && key.startsWith("Arrow") && viewport.current?.contains(target)) {
       if (event.shiftKey) {
         const dx = key === "ArrowRight" ? 16 : key === "ArrowLeft" ? -16 : 0;
         const dy = key === "ArrowDown" ? 16 : key === "ArrowUp" ? -16 : 0;
-        setNodes((previous) =>
-          previous.map((node) =>
-            node.id === selected.id ? { ...node, x: node.x + dx, y: node.y + dy } : node,
-          ),
-        );
+        if (!drag.current) commitPosition(selected, selected.x + dx, selected.y + dy);
       } else {
         const index = nodes.indexOf(selected);
         const next =
@@ -307,13 +431,16 @@ export function GenImageView({ windowControls, sidebarCollapsed }: GenImageViewP
   }
 
   const openDerive = (id: string, trigger: HTMLButtonElement) =>
-    setPanel({ kind: "create", trigger, source: id });
+    changePanel({ kind: "create", trigger, source: id });
+  const localScopeLabel =
+    localScopeName?.trim() || (localScope ? text.localMode : text.localPersonal);
 
   return (
     <main
       className="genimage-view"
       data-testid="genimage-workspace"
       data-sidebar-collapsed={sidebarCollapsed}
+      data-genimage-mode={localMode ? "local" : "fixture"}
       aria-label="GenImage"
       onKeyDown={keyDown}
     >
@@ -372,9 +499,12 @@ export function GenImageView({ windowControls, sidebarCollapsed }: GenImageViewP
               className="gi-node"
               data-genimage-node={node.id}
               data-source={node.source ?? ""}
+              data-genimage-x={node.x}
+              data-genimage-y={node.y}
+              data-genimage-version={"version" in node ? node.version : undefined}
               data-selected={node.id === selectedId}
               tabIndex={0}
-              aria-label={`${node.id} · ${node.title}`}
+              aria-label={`${nodeLabel(node)} · ${node.title}`}
               style={{ transform: `translate(${node.x}px, ${node.y}px)` }}
               onFocus={() => setSelectedId(node.id)}
               onKeyDown={(event) => {
@@ -389,17 +519,23 @@ export function GenImageView({ windowControls, sidebarCollapsed }: GenImageViewP
             >
               <header>
                 <span>
-                  <code>{node.id}</code>{" "}
-                  {node.source ? `${text.derived} ${node.source}` : text.root}
+                  <code>{nodeLabel(node)}</code>{" "}
+                  {node.source ? `${text.derived} ${node.source.slice(0, 8)}` : text.root}
                 </span>
-                <FixtureBadge>{text.fixture}</FixtureBadge>
+                <FixtureBadge>{localMode ? text.localMode : text.fixture}</FixtureBadge>
               </header>
-              <FixtureArtwork node={node} className="gi-node-art" />
+              <GenImageArtwork
+                node={node}
+                className="gi-node-art"
+                loadThumbnail={local.media?.thumbnail}
+              />
               <footer>
                 <div>
                   <h3>{node.title}</h3>
                   <p>
-                    {text.localArt} · {node.ratio} · {text.noExport}
+                    {localMode
+                      ? `${node.ratio} · ${text.localSaved}`
+                      : `${text.localArt} · ${node.ratio} · ${text.noExport}`}
                   </p>
                 </div>
                 <GitFork size={16} aria-hidden="true" />
@@ -411,6 +547,7 @@ export function GenImageView({ windowControls, sidebarCollapsed }: GenImageViewP
                     variant="ghost"
                     size="icon"
                     aria-label={text.details}
+                    data-testid="genimage-details"
                     onClick={(event) => togglePanel("details", event.currentTarget)}
                   >
                     <Info />
@@ -418,6 +555,7 @@ export function GenImageView({ windowControls, sidebarCollapsed }: GenImageViewP
                   <Button
                     type="button"
                     data-testid="genimage-derive"
+                    disabled={local.generating}
                     onClick={(event) => openDerive(node.id, event.currentTarget)}
                   >
                     <GitFork />
@@ -439,7 +577,8 @@ export function GenImageView({ windowControls, sidebarCollapsed }: GenImageViewP
             size="lg"
             aria-label={text.create}
             data-testid="genimage-new"
-            onClick={(event) => setPanel({ kind: "create", trigger: event.currentTarget })}
+            disabled={!ready || local.generating}
+            onClick={(event) => changePanel({ kind: "create", trigger: event.currentTarget })}
           >
             <Plus />
             <span>{text.create}</span>
@@ -453,6 +592,7 @@ export function GenImageView({ windowControls, sidebarCollapsed }: GenImageViewP
             aria-label={text.history}
             aria-expanded={panel?.kind === "history"}
             data-testid="genimage-history"
+            disabled={!ready}
             onClick={(event) => togglePanel("history", event.currentTarget)}
           >
             <History />
@@ -474,10 +614,25 @@ export function GenImageView({ windowControls, sidebarCollapsed }: GenImageViewP
         {windowControls}
       </header>
       <div className="gi-note">
-        <p>{text.workspace}</p>
-        <p>{text.tagline}</p>
-        <p>{text.notice}</p>
+        <p>{localMode ? localScopeLabel : text.workspace}</p>
+        {localMode ? <p>{text.localSaved}</p> : <p>{text.tagline}</p>}
+        {localMode ? null : <p>{text.notice}</p>}
       </div>
+      {localMode && (!ready || !nodes.length) ? (
+        <div className="gi-empty">
+          <p
+            role={local.loadError ? "alert" : "status"}
+            data-testid={ready ? "genimage-empty" : "genimage-loading"}
+          >
+            {ready ? text.localEmpty : local.loadError ? text.localLoadFailed : text.localLoading}
+          </p>
+          {!ready && local.loadError ? (
+            <Button type="button" variant="outline" onClick={local.reload}>
+              {text.localRetry}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
       <div className="gi-float gi-toolbar gi-zoom">
         <Button
           type="button"
@@ -513,8 +668,22 @@ export function GenImageView({ windowControls, sidebarCollapsed }: GenImageViewP
       <p className="gi-gesture">{text.gesture}</p>
       <div className="gi-float gi-toolbar gi-status">
         <i aria-hidden="true" />
-        <span>{text.mode}</span>
-        <FixtureBadge>{text.fixture}</FixtureBadge>
+        <span>{localMode ? text.localSaved : text.mode}</span>
+        {localMode ? null : <FixtureBadge>{text.fixture}</FixtureBadge>}
+        {onToggleMode ? (
+          <Button
+            type="button"
+            variant="ghost"
+            aria-label={text.localMode}
+            aria-pressed={localMode}
+            title={text.localMode}
+            data-testid="genimage-local-mode"
+            onClick={onToggleMode}
+          >
+            <HardDrive />
+            <span>{text.localMode}</span>
+          </Button>
+        ) : null}
         <Button
           ref={helpButton}
           type="button"
@@ -533,6 +702,9 @@ export function GenImageView({ windowControls, sidebarCollapsed }: GenImageViewP
           nodes={nodes}
           source={source}
           selected={selected}
+          media={local.media}
+          generating={local.generating}
+          generateError={local.generateError}
           prompt={prompt}
           ratio={ratio}
           panelId={panelId}
@@ -541,10 +713,15 @@ export function GenImageView({ windowControls, sidebarCollapsed }: GenImageViewP
           onChangePrompt={setPrompt}
           onChangeRatio={setRatio}
           onClose={closePanel}
-          onSubmit={submit}
+          onSubmit={() => void submit()}
           onDerive={openDerive}
           onLocate={locate}
         />
+      ) : null}
+      {local.moveError ? (
+        <p className="gi-float gi-announcement" role="alert">
+          {text.localMoveFailed}
+        </p>
       ) : null}
       <div role="status" className={announcement ? "gi-float gi-announcement" : "sr-only"}>
         {announcement}

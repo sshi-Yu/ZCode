@@ -1,9 +1,12 @@
+import { DEFAULT_WORKSPACE, waitForWorkspaceApp } from "#e2e/helpers/desktop-app";
+
 const workspace = '[data-testid="genimage-workspace"]';
 const entry = '[data-testid="genimage-sidebar-open"]';
 const node = (id: string) => `${workspace} [data-genimage-node="${id}"]`;
 
 describe("GENIMAGE-VIEW native canvas", () => {
   it("opens the fixture without a plugin and derives one child without changing its source", async () => {
+    await waitForWorkspaceApp(DEFAULT_WORKSPACE, 60_000);
     await $(entry).waitForClickable({ timeout: 30000 });
     await $(entry).click();
     await $(workspace).waitForDisplayed();

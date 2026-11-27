@@ -59,7 +59,7 @@ import {
   useManagedWorktreeSettlements,
   useWorktreeSupport,
 } from "@/managed-worktrees/index.js";
-import type { ManagedWorktreeCreationSettlement } from "@zcode/shared";
+import { isRemoteWorkspaceIdentity, type ManagedWorktreeCreationSettlement } from "@zcode/shared";
 import { ScopedErrorBoundary } from "@/ErrorBoundary.js";
 import { DesktopWindowControls } from "@/DesktopWindowControls.js";
 import { GenImageView } from "@/genimage/index.js";
@@ -1781,6 +1781,10 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
     [handleStartDraftInWorkspaceInChat],
   );
   const activeWorkspacePurpose = currentWorkspaceTab?.workspacePurpose ?? "project";
+  const genImageHasLocalProject =
+    activeWorkspacePurpose === "project" &&
+    !workspaceRemoteSessionId &&
+    !isRemoteWorkspaceIdentity(workspaceKey);
   const handleSelectConversationWorkspace = useCallback(async () => {
     if (!onResolveConversationWorkspace) {
       return;
@@ -3034,6 +3038,10 @@ const WorkspaceShellLayoutContent = memo(function WorkspaceShellLayoutComponent(
                           </main>
                         ) : genImageActive ? (
                           <GenImageView
+                            localScope={genImageHasLocalProject ? workspaceKey : ""}
+                            localScopeName={
+                              genImageHasLocalProject ? getPathLeaf(workspaceAbsPath) : undefined
+                            }
                             sidebarCollapsed={!isSidebarVisible}
                             windowControls={
                               usesInlineWindowControls && !isSidePaneVisible ? (

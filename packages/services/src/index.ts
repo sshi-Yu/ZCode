@@ -88,6 +88,7 @@ export { IBroadcastService } from "./broadcast/broadcast.js";
 // Onboarding 完成记录服务（本地持久化，后续上传服务器）
 export { IOnboardingRecordService } from "./onboarding/onboardingRecord.js";
 export * from "./specialized-model-settings/contract.js";
+export * from "./genimage/contract.js";
 export type {
   CreateOnboardingRecordServiceOptions,
   OnboardingRecordServiceFactory,

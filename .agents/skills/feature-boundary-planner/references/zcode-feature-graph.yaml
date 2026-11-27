@@ -739,6 +739,26 @@ nodes:
       - "ModelSelection is future Model-creation intent, not a current execution fact. Each model step creates one immutable Active Model and uses that same object for Context current-model identity, model-aware tool projection, request options, and the Adapter request. Guide creates a new model step; execution-scoped Off-Peak and inherited Subagents must not mix their Active Model with Session Selection."
       - "Implemented (Todo 87/99): A target-host selection read accepts original intent and returns a caller-specific effectiveSelection. Account and Personal/Built-in updates recompute temporary results without overwriting intent; UI reads share subscriptions and bounded cancellable read recovery. Composer, Automation, and Bot consume this result at their own commit boundaries. Bound Bot reads the Session original selection, never a second Bot preference; explicit /model commits the complete Session selection immediately. Managed Worker explicit Subagents use the same local facade through dependency injection, including Workflow children; implicit Subagents inherit Parent and execution overrides take priority. Ordinary providers keep identity and account plans follow the current plan. Off-Peak keeps its original provider and Ticket; cross-account remapping is excluded. Frozen runs and history do not remap. No new send-time synchronization barrier or storage migration is introduced. Worker account receivedRevision acknowledges receipt, not Registry application."
 
+  - id: "capability.genimage-canvas"
+    kind: "capability"
+    label: "GenImage native canvas and local simulation"
+    aliases: ["GenImage", "无限画布", "模拟生图", "图像派生"]
+    docs:
+      - "docs/superpowers/specs/2026-11-26-genimage-native-view-design.md"
+      - "docs/superpowers/specs/2026-11-27-genimage-canvas-product-design.md"
+      - "docs/superpowers/plans/2026-11-27-genimage-local-canvas.md"
+    codeSeeds:
+      - symbol: "GenImageView"
+        file: "packages/ui/src/genimage/GenImageView.tsx"
+      - symbol: "createGenImageService"
+        file: "packages/services/src/genimage/node.ts"
+      - symbol: "IGenImageService"
+        file: "packages/services/src/genimage/contract.ts"
+    invariants:
+      - "The native desktop preview uses a temporary SVG fixture. The explicit local simulation uses persisted PNG assets and board state, without an external generation request."
+      - "Only local desktop attachments expose the service. Workspace identities select separate boards and a blank scope selects the local personal board."
+      - "Host commits node coordinates and source references. Renderer owns the camera and draft. A layout edit cannot change image lineage."
+
   - id: "capability.specialized-model-settings"
     kind: "capability"
     label: "Desktop image and utility model settings"

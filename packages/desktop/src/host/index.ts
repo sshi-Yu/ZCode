@@ -50,6 +50,7 @@ import {
   IBotsService,
   ICredentialService,
   ISpecializedModelSettingsService,
+  IGenImageService,
   IFileService,
   IClientConfigService,
   IMediaPreviewService,
@@ -82,6 +83,7 @@ import {
 } from "@zcode/services";
 import {
   createLocalServices,
+  createGenImageService,
   createProjectWorkspaceNavigation,
   createRemoteProjectConnectionAdmission,
   releaseRemoteProjectProfileHost,
@@ -117,6 +119,7 @@ import {
   formatZCodeHostProcessName,
   formatZodError,
   buildRemoteWorkspaceIdentity,
+  buildLocalMediaPreviewUrl,
   buildServerRemoteWorkspaceIdentity,
   remoteHostIdFromWorkspaceIdentity,
   buildRemoteEnvironmentKey,
@@ -1424,6 +1427,7 @@ let databaseStartup: ReturnType<typeof createHostDatabaseStartup> | undefined;
 const pendingStartupAttachments = new Map<string, () => void>();
 let activeServices: ServiceCollection | null = null;
 let createSpecializedModelSettingsAttachment: (() => ISpecializedModelSettingsService) | undefined;
+let genImageService: IGenImageService | undefined;
 // 扩展门面（docs/plugins/extension-host.md）：InitLocal 建立服务后创建，Host 退出时断开扩展进程端口。
 let windowHostExtensions: WindowHostExtensions | null = null;
 /**
@@ -2491,6 +2495,14 @@ function exposeServicesOnMessagePort(
       ISpecializedModelSettingsService.channelName,
       ProxyChannel.fromService(createSpecializedModelSettingsAttachment()),
     );
+  }
+  if (clientMode === "desktop-continuous" && attachmentScope.kind === "local") {
+    genImageService ??= createGenImageService({
+      dataDir: join(getZCodeDataRootDir(), "genimage", "simulation"),
+      createPreviewUrl: async (path) =>
+        buildLocalMediaPreviewUrl(await authorizeLocalMediaPreviewPath(path)),
+    });
+    server.registerChannel(IGenImageService.channelName, ProxyChannel.fromService(genImageService));
   }
   let disposed = false;
   let flowUpdateChain = Promise.resolve();
